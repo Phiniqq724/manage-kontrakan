@@ -1,0 +1,523 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
+  public: {
+    Tables: {
+      kamar: {
+        Row: {
+          description: string | null
+          id: string
+          room_code: string
+          user_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          room_code: string
+          user_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          room_code?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kamar_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      guests: {
+        Row: {
+          activity: string | null
+          check_in: string
+          check_out: string | null
+          created_at: string | null
+          id: string
+          invited_by: string | null
+          modified_at: string | null
+          name: string
+          phone: string | null
+        }
+        Insert: {
+          activity?: string | null
+          check_in: string
+          check_out?: string | null
+          created_at?: string | null
+          id?: string
+          invited_by?: string | null
+          modified_at?: string | null
+          name: string
+          phone?: string | null
+        }
+        Update: {
+          activity?: string | null
+          check_in?: string
+          check_out?: string | null
+          created_at?: string | null
+          id?: string
+          invited_by?: string | null
+          modified_at?: string | null
+          name?: string
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "guests_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payments: {
+        Row: {
+          amount: number | null
+          created_at: string | null
+          docs: string | null
+          due_date: string | null
+          id: string
+          modified_at: string | null
+          paid_at: string | null
+          paid_by: string | null
+          period: string
+          status: string
+        }
+        Insert: {
+          amount?: number | null
+          created_at?: string | null
+          docs?: string | null
+          due_date?: string | null
+          id?: string
+          modified_at?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          period: string
+          status?: string
+        }
+        Update: {
+          amount?: number | null
+          created_at?: string | null
+          docs?: string | null
+          due_date?: string | null
+          id?: string
+          modified_at?: string | null
+          paid_at?: string | null
+          paid_by?: string | null
+          period?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payments_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      piket_requests: {
+        Row: {
+          assign_to: string | null
+          created_at: string | null
+          id: string
+          modified_at: string | null
+          piket_id: string | null
+          reason: string | null
+          status: string
+        }
+        Insert: {
+          assign_to?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          piket_id?: string | null
+          reason?: string | null
+          status?: string
+        }
+        Update: {
+          assign_to?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          piket_id?: string | null
+          reason?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "piket_requests_assign_to_fkey"
+            columns: ["assign_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "piket_requests_piket_id_fkey"
+            columns: ["piket_id"]
+            isOneToOne: false
+            referencedRelation: "pikets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pikets: {
+        Row: {
+          assign_to: string | null
+          created_at: string | null
+          day: string
+          docs: string | null
+          finished: boolean | null
+          id: string
+          modified_at: string | null
+          status: string
+        }
+        Insert: {
+          assign_to?: string | null
+          created_at?: string | null
+          day: string
+          docs?: string | null
+          finished?: boolean | null
+          id?: string
+          modified_at?: string | null
+          status?: string
+        }
+        Update: {
+          assign_to?: string | null
+          created_at?: string | null
+          day?: string
+          docs?: string | null
+          finished?: boolean | null
+          id?: string
+          modified_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pikets_assign_to_fkey"
+            columns: ["assign_to"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reports: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          docs: string | null
+          id: string
+          modified_at: string | null
+          suspect: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          docs?: string | null
+          id?: string
+          modified_at?: string | null
+          suspect?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          docs?: string | null
+          id?: string
+          modified_at?: string | null
+          suspect?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_suspect_fkey"
+            columns: ["suspect"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rule_requests: {
+        Row: {
+          assign_by: string | null
+          created_at: string | null
+          id: string
+          modified_at: string | null
+          priority: string
+          rules: string
+          status: string
+        }
+        Insert: {
+          assign_by?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          priority?: string
+          rules: string
+          status?: string
+        }
+        Update: {
+          assign_by?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          priority?: string
+          rules?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_requests_assign_by_fkey"
+            columns: ["assign_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rules: {
+        Row: {
+          assign_by: string | null
+          created_at: string | null
+          id: string
+          modified_at: string | null
+          priority: string
+          rules: string
+        }
+        Insert: {
+          assign_by?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          priority?: string
+          rules: string
+        }
+        Update: {
+          assign_by?: string | null
+          created_at?: string | null
+          id?: string
+          modified_at?: string | null
+          priority?: string
+          rules?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rules_assign_by_fkey"
+            columns: ["assign_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          avatar_url: string | null
+          contact: string | null
+          created_at: string | null
+          email: string
+          fullname: string
+          id: string
+          modified_at: string | null
+          password: string
+          push_token: string | null
+          role: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          contact?: string | null
+          created_at?: string | null
+          email: string
+          fullname: string
+          id?: string
+          modified_at?: string | null
+          password: string
+          push_token?: string | null
+          role?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          contact?: string | null
+          created_at?: string | null
+          email?: string
+          fullname?: string
+          id?: string
+          modified_at?: string | null
+          password?: string
+          push_token?: string | null
+          role?: string
+          username?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      is_admin: { Args: never; Returns: boolean }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {},
+  },
+} as const
