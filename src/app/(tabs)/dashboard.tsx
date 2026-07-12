@@ -70,6 +70,8 @@ export default function DashboardScreen() {
   const [guests, setGuests] = useState<GuestRow[]>([]);
   const [rules, setRules] = useState<RuleRow[]>([]);
 
+  const parseTs = (s: string) => new Date(s.endsWith("Z") ? s : s + "Z");
+
   useEffect(() => {
     if (!user) return;
     loadData();
@@ -85,15 +87,18 @@ export default function DashboardScreen() {
 
     const thisMonth = new Date().getMonth();
     const thisYear = new Date().getFullYear();
-    const today = new Date();
+    const today = parseTs(new Date().toISOString());
     today.setHours(0, 0, 0, 0);
 
     const allPikets = piketRes.data ?? [];
     const monthPikets = allPikets.filter((p) => {
-      const d = new Date(p.day);
+      const d = parseTs(p.day);
       return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
     });
-    setPiketDone(monthPikets.filter((p) => p.status === "done").length);
+    setPiketDone(
+      monthPikets.filter((p) => p.status === "done" && p.assign_to === user!.id)
+        .length,
+    );
     setPiketPending(
       monthPikets.filter((p) => p.assign_to === user!.id && p.status !== "done")
         .length,
@@ -103,13 +108,13 @@ export default function DashboardScreen() {
       .filter(
         (p) =>
           p.assign_to === user!.id &&
-          new Date(p.day) >= today &&
+          parseTs(p.day) >= today &&
           p.status !== "done",
       )
-      .sort((a, b) => new Date(a.day).getTime() - new Date(b.day).getTime())[0];
+      .sort((a, b) => parseTs(a.day).getTime() - parseTs(b.day).getTime())[0];
     if (myNext) {
       const diffDays = Math.ceil(
-        (new Date(myNext.day).getTime() - today.getTime()) / 86400000,
+        (parseTs(myNext.day).getTime() - today.getTime()) / 86400000,
       );
       setPiketNext(
         diffDays === 0
@@ -127,8 +132,7 @@ export default function DashboardScreen() {
 
     const recentGuests = (guestRes.data ?? [])
       .sort(
-        (a, b) =>
-          new Date(b.check_in).getTime() - new Date(a.check_in).getTime(),
+        (a, b) => parseTs(b.check_in).getTime() - parseTs(a.check_in).getTime(),
       )
       .slice(0, 2);
     setGuests(recentGuests);
@@ -165,14 +169,20 @@ export default function DashboardScreen() {
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.greeting}>{greeting()}</Text>
-            <Text style={styles.name}>{user?.fullname?.split(" ")[0] ?? ""}.</Text>
+            <Text style={styles.name}>
+              {user?.fullname?.split(" ")[0] ?? ""}.
+            </Text>
             <Text style={styles.date}>{TODAY.toUpperCase()}</Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push("/changelog" as any)}
             style={styles.changelogBtn}
           >
-            <Ionicons name="megaphone-outline" size={18} color={Colors.accent} />
+            <Ionicons
+              name="megaphone-outline"
+              size={18}
+              color={Colors.accent}
+            />
           </TouchableOpacity>
         </View>
         <Rule style={{ marginTop: Spacing.md }} />
@@ -205,7 +215,7 @@ export default function DashboardScreen() {
             title="Tagihan Bulanan"
             meta={
               p.status === "confirmed" && p.paid_at
-                ? `Dibayar: ${new Date(p.paid_at).toLocaleDateString("id-ID")}`
+                ? `Dibayar: ${parseTs(p.paid_at).toLocaleDateString("id-ID")}`
                 : p.status === "pending"
                   ? "Menunggu konfirmasi admin"
                   : `Jatuh tempo: ${p.period}`
@@ -225,12 +235,12 @@ export default function DashboardScreen() {
         {guests.map((g) => (
           <LogRow
             key={g.id}
-            date={new Date(g.check_in).toLocaleDateString("id-ID", {
+            date={parseTs(g.check_in).toLocaleDateString("id-ID", {
               day: "2-digit",
               month: "short",
             })}
             title={g.name}
-            meta={`Masuk ${new Date(g.check_in).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
+            meta={`Masuk ${parseTs(g.check_in).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`}
             badge={g.check_out ? "Selesai" : "Di dalam"}
             badgeType={g.check_out ? "muted" : "warning"}
           />

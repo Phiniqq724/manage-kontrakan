@@ -46,7 +46,10 @@ export default function ChangelogScreen() {
         }
       >
         <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+          >
             <Ionicons name="arrow-back" size={20} color={Colors.text} />
           </TouchableOpacity>
           <PageHeader title="CHANGELOG" subtitle="Riwayat pembaruan aplikasi" />
@@ -76,8 +79,12 @@ export default function ChangelogScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
+  content: { paddingBottom: Spacing.xl, paddingTop: Spacing.md },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
   backBtn: { paddingLeft: Spacing.md, paddingTop: Spacing.lg },
   emptyText: {
     fontSize: FontSize.sm,

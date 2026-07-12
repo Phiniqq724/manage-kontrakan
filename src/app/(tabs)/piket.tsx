@@ -202,11 +202,15 @@ export default function PiketScreen() {
     const d = new Date(p.day);
     return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
   });
-  const statDone = monthPikets.filter((p) => p.status === "done").length;
+  const statDone = monthPikets.filter(
+    (p) => p.status === "done" && p.assign_to === currentUser?.id,
+  ).length;
   const statPending = monthPikets.filter(
     (p) => p.assign_to === currentUser?.id && p.status === "pending",
   ).length;
-  const statIzin = monthPikets.filter((p) => p.status === "izin").length;
+  const statIzin = monthPikets.filter(
+    (p) => p.status === "izin" && p.assign_to === currentUser?.id,
+  ).length;
 
   const otherMembers = Object.values(users).filter(
     (u) => u.id !== currentUser?.id,
@@ -228,7 +232,11 @@ export default function PiketScreen() {
           />
         }
       >
-        <PageHeader title="PIKET" subtitle="Jadwal kebersihan penghuni" topInset={60} />
+        <PageHeader
+          title="PIKET"
+          subtitle="Jadwal kebersihan penghuni"
+          topInset={60}
+        />
 
         <View style={styles.statsRow}>
           <StatCard value={String(statDone)} label="Selesai" sub="BULAN INI" />
