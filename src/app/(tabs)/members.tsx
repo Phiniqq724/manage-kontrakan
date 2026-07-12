@@ -134,7 +134,7 @@ export default function MembersScreen() {
             />
           }
         >
-        <PageHeader title="PENGHUNI" subtitle="Kontak dan info kamar" />
+        <PageHeader title="PENGHUNI" subtitle="Kontak dan info kamar" topInset={60} />
 
 
         <SectionHeader label={`${members.length} Penghuni`} />

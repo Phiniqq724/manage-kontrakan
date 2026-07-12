@@ -138,6 +138,47 @@ export const ruleRequestsApi = {
     await supabase.from("rule_requests").delete().eq("id", id),
 };
 
+// RULE REQUEST VOTES API
+export const ruleRequestVotesApi = {
+  getMine: async (ruleRequestId: string, voterId: string) =>
+    await supabase
+      .from("rule_request_votes")
+      .select("*")
+      .eq("rule_request_id", ruleRequestId)
+      .eq("voter_id", voterId)
+      .maybeSingle(),
+  getAllMine: async (voterId: string) =>
+    await supabase
+      .from("rule_request_votes")
+      .select("*")
+      .eq("voter_id", voterId),
+  cast: async (
+    ruleRequestId: string,
+    voterId: string,
+    vote: "approve" | "decline",
+  ) =>
+    await supabase
+      .from("rule_request_votes")
+      .insert({ rule_request_id: ruleRequestId, voter_id: voterId, vote })
+      .select()
+      .single(),
+  getTally: async (ruleRequestId: string) =>
+    await supabase.rpc("get_rule_request_vote_tally", {
+      p_rule_request_id: ruleRequestId,
+    }),
+};
+
+// CHANGELOGS API
+export const changelogsApi = {
+  getAll: async () =>
+    await supabase
+      .from("changelogs")
+      .select("*")
+      .order("created_at", { ascending: false }),
+  create: async (data: InsertTables<"changelogs">) =>
+    await supabase.from("changelogs").insert(data).select().single(),
+};
+
 // REPORTS API
 export const reportsApi = {
   getAll: async () => await supabase.from("reports").select("*"),

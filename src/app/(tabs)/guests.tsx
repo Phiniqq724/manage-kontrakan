@@ -25,7 +25,7 @@ import { Colors, FontSize, Spacing } from "../../constants/theme";
 import { guestsApi } from "../../services/api";
 import type { Database } from "../../utils/supabase-types";
 import { useAuth } from "../../utils/auth-context";
-import { getAdminToken, sendPushNotification } from "../../utils/notifications";
+import { getAllTokensExcept, sendPushNotification } from "../../utils/notifications";
 
 type GuestRow = Database["public"]["Tables"]["guests"]["Row"];
 
@@ -127,12 +127,16 @@ export default function GuestsScreen() {
         setActivity("");
         setCheckIn(new Date());
         setCheckOut(undefined);
-        const adminToken = await getAdminToken();
-        if (adminToken) {
-          await sendPushNotification(
-            adminToken,
-            "Tamu Baru Didaftarkan",
-            `${user?.fullname} mendaftarkan tamu baru: ${name}.`,
+        if (user?.id) {
+          const tokens = await getAllTokensExcept(user.id);
+          await Promise.all(
+            tokens.map((token) =>
+              sendPushNotification(
+                token,
+                "Tamu Baru Didaftarkan",
+                `${user.fullname} mendaftarkan tamu baru: ${name}.`,
+              ),
+            ),
           );
         }
       }
@@ -175,7 +179,7 @@ export default function GuestsScreen() {
             />
           }
         >
-        <PageHeader title="TAMU" subtitle="Monitoring kunjungan" />
+        <PageHeader title="TAMU" subtitle="Monitoring kunjungan" topInset={60} />
 
         <View style={styles.statsRow}>
           <StatCard value={String(statInside)} label="Di dalam" sub="SAAT INI" />

@@ -41,6 +41,12 @@ const MENU = [
     icon: "home-outline" as const,
     route: "/admin/kamar",
   },
+  {
+    label: "Kelola Changelog",
+    sub: "Tambah pembaruan dan notifikasi semua penghuni",
+    icon: "megaphone-outline" as const,
+    route: "/admin/changelog",
+  },
 ];
 
 export default function AdminIndex() {

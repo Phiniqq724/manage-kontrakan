@@ -13,6 +13,52 @@ export async function getAdminToken(): Promise<string | null> {
   return data?.push_token ?? null;
 }
 
+/** Fetches push tokens for every user except the given one. */
+export async function getAllTokensExcept(userId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from("users")
+    .select("push_token")
+    .neq("id", userId)
+    .not("push_token", "is", null);
+  return (data ?? [])
+    .map((u) => u.push_token)
+    .filter((t): t is string => !!t);
+}
+
+/** Fetches push tokens for every eligible rule-request voter (non-admin, excluding the given user). */
+export async function getVoterTokensExcept(userId: string): Promise<string[]> {
+  const { data } = await supabase
+    .from("users")
+    .select("push_token")
+    .neq("id", userId)
+    .neq("role", "admin")
+    .not("push_token", "is", null);
+  return (data ?? [])
+    .map((u) => u.push_token)
+    .filter((t): t is string => !!t);
+}
+
+const RULE_VOTE_CATEGORY = "rule_vote";
+
+/**
+ * Registers the actionable notification category for rule-vote pushes,
+ * so members can tap Setuju/Tolak directly from the notification.
+ */
+export async function registerRuleVoteCategory(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(RULE_VOTE_CATEGORY, [
+    {
+      identifier: "approve",
+      buttonTitle: "Setuju",
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: "decline",
+      buttonTitle: "Tolak",
+      options: { opensAppToForeground: false },
+    },
+  ]);
+}
+
 const EXPO_PROJECT_ID = "968c2fca-1d0f-4f42-a469-09502a4405b8";
 
 // Prevents duplicate concurrent registration calls (e.g. fetchUser firing twice on mount)
@@ -79,6 +125,7 @@ export async function sendPushNotification(
   recipientToken: string,
   title: string,
   body: string,
+  opts?: { data?: Record<string, unknown>; categoryId?: string },
 ): Promise<void> {
   try {
     const res = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -87,7 +134,13 @@ export async function sendPushNotification(
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({ to: recipientToken, title, body }),
+      body: JSON.stringify({
+        to: recipientToken,
+        title,
+        body,
+        data: opts?.data,
+        categoryId: opts?.categoryId,
+      }),
     });
     if (__DEV__) {
       const json = await res.json();

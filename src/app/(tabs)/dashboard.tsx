@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   RefreshControl,
@@ -160,9 +162,19 @@ export default function DashboardScreen() {
       }
     >
       <View style={styles.header}>
-        <Text style={styles.greeting}>{greeting()}</Text>
-        <Text style={styles.name}>{user?.fullname?.split(" ")[0] ?? ""}.</Text>
-        <Text style={styles.date}>{TODAY.toUpperCase()}</Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.greeting}>{greeting()}</Text>
+            <Text style={styles.name}>{user?.fullname?.split(" ")[0] ?? ""}.</Text>
+            <Text style={styles.date}>{TODAY.toUpperCase()}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push("/changelog" as any)}
+            style={styles.changelogBtn}
+          >
+            <Ionicons name="megaphone-outline" size={18} color={Colors.accent} />
+          </TouchableOpacity>
+        </View>
         <Rule style={{ marginTop: Spacing.md }} />
       </View>
 
@@ -284,6 +296,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.bg },
   content: { paddingBottom: Spacing.xl },
   header: { paddingHorizontal: Spacing.md, paddingTop: 60 },
+  headerRow: { flexDirection: "row", alignItems: "center" },
+  changelogBtn: { padding: Spacing.sm },
   greeting: { fontSize: FontSize.base, color: Colors.textMuted },
   name: {
     fontFamily: "SpaceMono",

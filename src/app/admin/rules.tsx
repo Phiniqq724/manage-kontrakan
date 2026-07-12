@@ -18,12 +18,13 @@ import {
   SectionHeader,
 } from "../../components/UI";
 import { Colors, FontSize, Spacing } from "../../constants/theme";
-import { ruleRequestsApi, rulesApi, usersApi } from "../../services/api";
-import { sendPushNotification } from "../../utils/notifications";
+import { ruleRequestsApi, ruleRequestVotesApi, usersApi } from "../../services/api";
+import { approveRuleRequest, declineRuleRequest } from "../../utils/rule-requests";
 import type { Database } from "../../utils/supabase-types";
 
 type RuleRequestRow = Database["public"]["Tables"]["rule_requests"]["Row"];
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
+type VoteTally = { approve_count: number; decline_count: number; total_votes: number };
 
 const PRIORITY_TYPE: Record<string, "danger" | "warning" | "muted"> = {
   high: "danger",
@@ -39,6 +40,8 @@ const PRIORITY_LABEL: Record<string, string> = {
 export default function AdminRulesScreen() {
   const [requests, setRequests] = useState<RuleRequestRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
+  const [tallies, setTallies] = useState<Record<string, VoteTally>>({});
+  const [eligibleVoterCount, setEligibleVoterCount] = useState(0);
   const [processing, setProcessing] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -56,34 +59,28 @@ export default function AdminRulesScreen() {
       userMap[u.id] = u;
     });
     setUsers(userMap);
+    setEligibleVoterCount((userRes.data ?? []).filter((u) => u.role !== "admin").length);
+
     const pending = (reqRes.data ?? []).filter((r) => r.status === "pending");
     setRequests(pending);
+
+    const tallyEntries = await Promise.all(
+      pending.map(async (r) => {
+        const { data } = await ruleRequestVotesApi.getTally(r.id);
+        return [r.id, data?.[0]] as const;
+      }),
+    );
+    const tallyMap: Record<string, VoteTally> = {};
+    tallyEntries.forEach(([id, tally]) => {
+      if (tally) tallyMap[id] = tally;
+    });
+    setTallies(tallyMap);
   }
 
   async function handleApprove(req: RuleRequestRow) {
     setProcessing(req.id);
     try {
-      const [ruleRes, reqRes] = await Promise.all([
-        rulesApi.create({
-          rules: req.rules,
-          priority: req.priority,
-          assign_by: req.assign_by,
-        }),
-        ruleRequestsApi.update(req.id, { status: "approved" }),
-      ]);
-      if (ruleRes.error) throw ruleRes.error;
-      if (reqRes.error) throw reqRes.error;
-
-      // Notify proposer
-      const proposer = req.assign_by ? users[req.assign_by] : null;
-      if (proposer?.push_token) {
-        await sendPushNotification(
-          proposer.push_token,
-          "Usulan Peraturan Disetujui",
-          `Usulan peraturan kamu telah disetujui dan ditambahkan ke daftar aturan kontrakan.`,
-        );
-      }
-
+      await approveRuleRequest(req);
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -95,22 +92,7 @@ export default function AdminRulesScreen() {
   async function handleDecline(req: RuleRequestRow) {
     setProcessing(req.id);
     try {
-      const { error } = await ruleRequestsApi.update(req.id, {
-        status: "declined",
-      });
-      if (error) throw error;
-
-      // Notify proposer
-      const proposer = req.assign_by ? users[req.assign_by] : null;
-      if (proposer?.push_token) {
-        console.log("Sending push notification to", proposer.push_token);
-        await sendPushNotification(
-          proposer.push_token,
-          "Usulan Peraturan Ditolak",
-          `Usulan peraturan kamu belum bisa diterima saat ini.`,
-        );
-      }
-
+      await declineRuleRequest(req);
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -157,6 +139,7 @@ export default function AdminRulesScreen() {
         {requests.map((req) => {
           const proposer = req.assign_by ? users[req.assign_by] : null;
           const isProcessing = processing === req.id;
+          const tally = tallies[req.id];
           return (
             <View key={req.id} style={styles.reqCard}>
               <View style={styles.reqHeader}>
@@ -169,6 +152,12 @@ export default function AdminRulesScreen() {
                 </Text>
               </View>
               <Text style={styles.reqRule}>{req.rules}</Text>
+              {tally && (
+                <Text style={styles.reqTally}>
+                  {tally.approve_count} setuju · {tally.decline_count} tolak ·{" "}
+                  {tally.total_votes}/{eligibleVoterCount} vote
+                </Text>
+              )}
               <View style={styles.reqActions}>
                 <GhostButton
                   label={isProcessing ? "..." : "TOLAK"}
@@ -218,5 +207,10 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   reqRule: { fontSize: FontSize.base, color: Colors.text },
+  reqTally: {
+    fontFamily: "SpaceMono",
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+  },
   reqActions: { flexDirection: "row", marginTop: Spacing.xs },
 });

@@ -42,13 +42,7 @@ example
 /ios
 /android
 
-# Google Services (Firebase) configuration files
-google-services.json
-
 # MCP & Claude
 .mcp.json
 .agents
 .claude
-RESULT.md
-TASK.md
-TODO.md

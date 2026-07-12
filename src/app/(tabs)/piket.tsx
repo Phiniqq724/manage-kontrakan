@@ -24,11 +24,7 @@ import { Colors, FontSize, Spacing } from "../../constants/theme";
 import { piketRequestsApi, piketsApi, usersApi } from "../../services/api";
 import { useAuth } from "../../utils/auth-context";
 import { sendPushNotification } from "../../utils/notifications";
-import {
-  generatePiketRows,
-  getTodayStr,
-  isEndOfMonth,
-} from "../../utils/piket-utils";
+import { getTodayStr } from "../../utils/piket-utils";
 import type { Database } from "../../utils/supabase-types";
 import { captureAndUploadImage } from "../../utils/upload";
 
@@ -85,43 +81,6 @@ export default function PiketScreen() {
       (a, b) => new Date(b.day).getTime() - new Date(a.day).getTime(),
     );
     setPikets(allPikets);
-
-    // Auto-generate next month's schedule only at end of current month
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const futurePikets = allPikets.filter((p) => new Date(p.day) >= today);
-    if (
-      futurePikets.length === 0 &&
-      isEndOfMonth() &&
-      (userRes.data ?? []).length > 0
-    ) {
-      const nonAdminIds = (userRes.data ?? [])
-        .filter((u) => u.role !== "admin")
-        .map((u) => u.id);
-      if (nonAdminIds.length > 0) {
-        const next = new Date();
-        next.setMonth(next.getMonth() + 1);
-        const rows = generatePiketRows(
-          nonAdminIds,
-          next.getFullYear(),
-          next.getMonth() + 1,
-        );
-        for (const row of rows) {
-          await piketsApi.create(row);
-        }
-        const refreshed = await piketsApi.getAll();
-        if (refreshed.data) {
-          allPikets.splice(
-            0,
-            allPikets.length,
-            ...refreshed.data.sort(
-              (a, b) => new Date(b.day).getTime() - new Date(a.day).getTime(),
-            ),
-          );
-          setPikets([...allPikets]);
-        }
-      }
-    }
 
     if (currentUser) {
       const today = new Date();
@@ -269,7 +228,7 @@ export default function PiketScreen() {
           />
         }
       >
-        <PageHeader title="PIKET" subtitle="Jadwal kebersihan penghuni" />
+        <PageHeader title="PIKET" subtitle="Jadwal kebersihan penghuni" topInset={60} />
 
         <View style={styles.statsRow}>
           <StatCard value={String(statDone)} label="Selesai" sub="BULAN INI" />
@@ -363,9 +322,11 @@ export default function PiketScreen() {
           {(() => {
             const todayStr = getTodayStr();
             const groupedMap: Record<string, PiketRow[]> = {};
-            pikets.forEach((p) => {
-              (groupedMap[p.day] ??= []).push(p);
-            });
+            pikets
+              .filter((p) => p.day >= todayStr)
+              .forEach((p) => {
+                (groupedMap[p.day] ??= []).push(p);
+              });
             return Object.entries(groupedMap)
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([day, group]) => {

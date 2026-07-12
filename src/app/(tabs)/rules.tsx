@@ -19,13 +19,21 @@ import {
   SectionHeader,
 } from "../../components/UI";
 import { Colors, FontSize, Spacing } from "../../constants/theme";
-import { rulesApi, ruleRequestsApi } from "../../services/api";
+import {
+  ruleRequestsApi,
+  ruleRequestVotesApi,
+  rulesApi,
+  usersApi,
+} from "../../services/api";
 import { useAuth } from "../../utils/auth-context";
-import { getAdminToken, sendPushNotification } from "../../utils/notifications";
+import { getVoterTokensExcept, sendPushNotification } from "../../utils/notifications";
+import { castVoteAndMaybeResolve } from "../../utils/rule-requests";
 import type { Database } from "../../utils/supabase-types";
 
 type RuleRow = Database["public"]["Tables"]["rules"]["Row"];
 type RuleRequestRow = Database["public"]["Tables"]["rule_requests"]["Row"];
+type VoteTally = { approve_count: number; decline_count: number; total_votes: number };
+type VoteChoice = "approve" | "decline";
 
 const PRIORITY_TYPE: Record<string, "danger" | "warning" | "muted"> = {
   high: "danger",
@@ -41,7 +49,11 @@ const PRIORITY_LABEL: Record<string, string> = {
 export default function RulesScreen() {
   const { user } = useAuth();
   const [rules, setRules] = useState<RuleRow[]>([]);
-  const [myRequests, setMyRequests] = useState<RuleRequestRow[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<RuleRequestRow[]>([]);
+  const [tallies, setTallies] = useState<Record<string, VoteTally>>({});
+  const [myVotes, setMyVotes] = useState<Record<string, VoteChoice>>({});
+  const [eligibleVoterCount, setEligibleVoterCount] = useState(0);
+  const [votingId, setVotingId] = useState<string | null>(null);
   const [proposeModal, setProposeModal] = useState(false);
   const [ruleText, setRuleText] = useState("");
   const [priority, setPriority] = useState<"high" | "medium" | "low">("medium");
@@ -53,13 +65,56 @@ export default function RulesScreen() {
   }, [user?.id]);
 
   async function loadData() {
-    const [rulesRes, reqRes] = await Promise.all([
+    const [rulesRes, reqRes, usersRes] = await Promise.all([
       rulesApi.getAll(),
       ruleRequestsApi.getAll(),
+      usersApi.getAll(),
     ]);
     if (rulesRes.data) setRules(rulesRes.data);
+
+    const nonAdminCount = (usersRes.data ?? []).filter((u) => u.role !== "admin").length;
+    setEligibleVoterCount(nonAdminCount);
+
     if (reqRes.data && user) {
-      setMyRequests(reqRes.data.filter((r) => r.assign_by === user.id && r.status === "pending"));
+      const pending = reqRes.data.filter((r) => r.status === "pending");
+      setPendingRequests(pending);
+
+      // Admin doesn't vote — only acts via the admin approve/decline panel.
+      if (user.role !== "admin") {
+        const { data: myVoteRows } = await ruleRequestVotesApi.getAllMine(user.id);
+        const voteMap: Record<string, VoteChoice> = {};
+        (myVoteRows ?? []).forEach((v) => {
+          voteMap[v.rule_request_id] = v.vote as VoteChoice;
+        });
+        setMyVotes(voteMap);
+      } else {
+        setMyVotes({});
+      }
+
+      const tallyEntries = await Promise.all(
+        pending.map(async (r) => {
+          const { data } = await ruleRequestVotesApi.getTally(r.id);
+          return [r.id, data?.[0]] as const;
+        }),
+      );
+      const tallyMap: Record<string, VoteTally> = {};
+      tallyEntries.forEach(([id, tally]) => {
+        if (tally) tallyMap[id] = tally;
+      });
+      setTallies(tallyMap);
+    }
+  }
+
+  async function handleVote(req: RuleRequestRow, vote: VoteChoice) {
+    if (!user) return;
+    setVotingId(req.id);
+    try {
+      await castVoteAndMaybeResolve(req, user.id, vote, eligibleVoterCount);
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setVotingId(null);
     }
   }
 
@@ -70,7 +125,7 @@ export default function RulesScreen() {
     }
     setSubmitting(true);
     try {
-      const { error } = await ruleRequestsApi.create({
+      const { data: newRequest, error } = await ruleRequestsApi.create({
         rules: ruleText,
         priority,
         assign_by: user!.id,
@@ -81,12 +136,18 @@ export default function RulesScreen() {
       setRuleText("");
       setPriority("medium");
       loadData();
-      const adminToken = await getAdminToken();
-      if (adminToken) {
-        await sendPushNotification(
-          adminToken,
-          "Usulan Peraturan Baru",
-          `${user!.fullname} mengusulkan peraturan baru.`,
+
+      if (newRequest) {
+        const tokens = await getVoterTokensExcept(user!.id);
+        await Promise.all(
+          tokens.map((token) =>
+            sendPushNotification(
+              token,
+              "Usulan Peraturan Baru",
+              `${user!.fullname} mengusulkan peraturan baru. Yuk vote!`,
+              { data: { ruleRequestId: newRequest.id }, categoryId: "rule_vote" },
+            ),
+          ),
         );
       }
     } catch (err: any) {
@@ -108,23 +169,64 @@ export default function RulesScreen() {
             />
           }
         >
-        <PageHeader title="PERATURAN" subtitle="Tata tertib kontrakan" />
+        <PageHeader title="PERATURAN" subtitle="Tata tertib kontrakan" topInset={60} />
 
         <View style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.lg }}>
           <PrimaryButton label="USULKAN PERATURAN" onPress={() => setProposeModal(true)} />
         </View>
 
-        {myRequests.length > 0 && (
+        {pendingRequests.length > 0 && (
           <View style={{ marginBottom: Spacing.lg }}>
-            <SectionHeader label="Usulan Kamu" />
+            <SectionHeader label={`${pendingRequests.length} Sedang Di-vote`} />
             <Rule />
-            {myRequests.map((req) => (
-              <View key={req.id} style={styles.ruleRow}>
-                <Badge label="Menunggu" type="warning" />
-                <Text style={styles.ruleText}>{req.rules}</Text>
-              </View>
-            ))}
-            <Rule />
+            {pendingRequests.map((req) => {
+              const tally = tallies[req.id];
+              const isVoting = votingId === req.id;
+              const isAdmin = user?.role === "admin";
+              const isOwn = req.assign_by === user?.id;
+              const myVote = myVotes[req.id];
+              const canVote = !isAdmin && !isOwn && !myVote;
+              return (
+                <View key={req.id} style={styles.voteCard}>
+                  <View style={styles.voteHeader}>
+                    <Badge
+                      label={PRIORITY_LABEL[req.priority] ?? req.priority}
+                      type={PRIORITY_TYPE[req.priority] ?? "muted"}
+                    />
+                    {tally && (
+                      <Text style={styles.voteTally}>
+                        {tally.approve_count} setuju · {tally.decline_count} tolak ·{" "}
+                        {tally.total_votes}/{eligibleVoterCount} vote
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.ruleText}>{req.rules}</Text>
+                  {canVote ? (
+                    <View style={styles.voteActions}>
+                      <GhostButton
+                        label={isVoting ? "..." : "TOLAK"}
+                        onPress={() => handleVote(req, "decline")}
+                      />
+                      <View style={{ width: Spacing.sm }} />
+                      <PrimaryButton
+                        label={isVoting ? "MEMPROSES..." : "TERIMA"}
+                        onPress={() => handleVote(req, "approve")}
+                      />
+                    </View>
+                  ) : (
+                    !isAdmin && (
+                      <Text style={styles.voteStatus}>
+                        {isOwn
+                          ? "Diajukan olehmu"
+                          : myVote === "approve"
+                            ? "Kamu vote: Setuju"
+                            : "Kamu vote: Tolak"}
+                      </Text>
+                    )
+                  )}
+                </View>
+              );
+            })}
           </View>
         )}
 
@@ -209,6 +311,30 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FontSize.base,
     color: Colors.text,
+  },
+  voteCard: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  voteHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  voteTally: {
+    fontFamily: "SpaceMono",
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+  },
+  voteActions: { flexDirection: "row", marginTop: Spacing.xs },
+  voteStatus: {
+    fontFamily: "SpaceMono",
+    fontSize: FontSize.xs,
+    color: Colors.textFaint,
+    letterSpacing: 0.5,
   },
   emptyText: {
     fontSize: FontSize.sm,

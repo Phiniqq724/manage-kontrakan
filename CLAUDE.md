@@ -47,11 +47,6 @@ Before completing any task, you must run the following sequence:
 
 1. `npx expo-doctor` (Scans for outdated, deprecated, or incorrectly installed packages. Validates package compatibility against the React Native Directory. Checks for sync issues between your app.json configuration and native ios/ or android/ directories. Ensures your project meets the requirements for submitting to app stores and supporting React Native's New Architecture.)
 2. `npx tsc --noEmit` (Ensure no type errors)
+3. If I say "That's it, make me the changelog", add changelog on supabase using changelog table refering to what you've done today and notify every user using curl.
 
 - Do not add heavy test scaffolding for simple presentational components, but do add unit tests for custom hooks and data utilities.
-
-# Communication & PR Conventions
-
-- Keep explanations high-level. Avoid line-by-line descriptions of code changes.
-- Summarize the _why_ and the _what_ clearly.
-- If you encounter a problem or are uncertain about the implementation, stop and ask before proceeding. Surface tradeoffs if multiple solutions exist.

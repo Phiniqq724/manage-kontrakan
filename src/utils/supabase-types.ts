@@ -14,31 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
-      kamar: {
+      changelogs: {
         Row: {
+          created_at: string
+          created_by: string | null
           description: string | null
           id: string
-          room_code: string
-          user_id: string | null
+          title: string
         }
         Insert: {
+          created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
-          room_code: string
-          user_id?: string | null
+          title: string
         }
         Update: {
+          created_at?: string
+          created_by?: string | null
           description?: string | null
           id?: string
-          room_code?: string
-          user_id?: string | null
+          title?: string
         }
         Relationships: [
           {
-            foreignKeyName: "kamar_user_id_fkey"
-            columns: ["user_id"]
+            foreignKeyName: "changelogs_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "changelogs_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
         ]
@@ -83,6 +93,49 @@ export type Database = {
             columns: ["invited_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "guests_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kamar: {
+        Row: {
+          description: string | null
+          id: string
+          room_code: string
+          user_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          room_code: string
+          user_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          room_code?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kamar_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kamar_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
         ]
@@ -132,6 +185,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "payments_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       piket_requests: {
@@ -168,6 +228,13 @@ export type Database = {
             columns: ["assign_to"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "piket_requests_assign_to_fkey"
+            columns: ["assign_to"]
+            isOneToOne: false
+            referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
           {
@@ -218,6 +285,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "pikets_assign_to_fkey"
+            columns: ["assign_to"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       reports: {
@@ -260,10 +334,70 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "reports_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "reports_suspect_fkey"
             columns: ["suspect"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reports_suspect_fkey"
+            columns: ["suspect"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rule_request_votes: {
+        Row: {
+          created_at: string
+          id: string
+          rule_request_id: string
+          vote: string
+          voter_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          rule_request_id: string
+          vote: string
+          voter_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          rule_request_id?: string
+          vote?: string
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_request_votes_rule_request_id_fkey"
+            columns: ["rule_request_id"]
+            isOneToOne: false
+            referencedRelation: "rule_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_request_votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_request_votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
         ]
@@ -304,6 +438,13 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rule_requests_assign_by_fkey"
+            columns: ["assign_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       rules: {
@@ -337,6 +478,13 @@ export type Database = {
             columns: ["assign_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rules_assign_by_fkey"
+            columns: ["assign_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
         ]
@@ -385,9 +533,35 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      users_public: {
+        Row: {
+          fullname: string | null
+          id: string | null
+          role: string | null
+        }
+        Insert: {
+          fullname?: string | null
+          id?: string | null
+          role?: string | null
+        }
+        Update: {
+          fullname?: string | null
+          id?: string | null
+          role?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      generate_next_piket_schedule: { Args: never; Returns: undefined }
+      get_rule_request_vote_tally: {
+        Args: { p_rule_request_id: string }
+        Returns: {
+          approve_count: number
+          decline_count: number
+          total_votes: number
+        }[]
+      }
       is_admin: { Args: never; Returns: boolean }
     }
     Enums: {

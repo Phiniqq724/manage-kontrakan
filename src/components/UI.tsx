@@ -209,12 +209,15 @@ export function Field({ label, secureTextEntry, ...props }: TextInputProps & { l
 export function PageHeader({
   title,
   subtitle,
+  topInset,
 }: {
   title: string;
   subtitle?: string;
+  /** Overrides the default top padding — pass 60 to match the tab-root screens (Home/Profile). */
+  topInset?: number;
 }) {
   return (
-    <View style={styles.pageHeader}>
+    <View style={[styles.pageHeader, topInset != null && { paddingTop: topInset }]}>
       <Text style={styles.pageTitle}>{title}</Text>
       {subtitle && <Text style={styles.pageSubtitle}>{subtitle}</Text>}
       <Rule style={{ marginTop: Spacing.md }} />

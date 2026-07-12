@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "831038492231",
+    "project_id": "manage-kontrakan",
+    "storage_bucket": "manage-kontrakan.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:831038492231:android:1a232e2c2d4861db542b62",
+        "android_client_info": {
+          "package_name": "com.sandy.managekontrakan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCmPfZz5kyS-xWtIc9TRMUbwTdrTbwG2lM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
