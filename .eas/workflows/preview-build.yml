@@ -1,0 +1,18 @@
+name: Update app automatically
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build_android:
+    type: build
+    params:
+      platform: android
+      profile: preview
