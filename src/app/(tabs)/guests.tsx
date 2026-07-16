@@ -1,110 +1,137 @@
-import DateTimePicker, { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
-import { useEffect, useState } from "react";
+import { ButtonContent } from "@/components/ButtonContent";
+import { guestsApi, usersApi } from "@/services/api";
+import { useAuth } from "@/utils/auth-context";
 import {
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
+  getAllTokensExcept,
+  sendPushNotification,
+} from "@/utils/notifications";
+import type { Database } from "@/utils/supabase-types";
+import CheckCircle from "@expo/material-symbols/check_circle.xml";
+import Edit from "@expo/material-symbols/edit.xml";
+import Login from "@expo/material-symbols/login.xml";
+import Logout from "@expo/material-symbols/logout.xml";
+import Schedule from "@expo/material-symbols/schedule.xml";
+import { Host } from "@expo/ui";
+import {
+  Box,
+  Button,
+  Column,
+  ExtendedFloatingActionButton,
+  Icon,
+  ModalBottomSheet,
+  OutlinedButton,
+  OutlinedCard,
+  OutlinedTextField,
+  PullToRefreshBox,
+  Row,
+  SegmentedButton,
+  SingleChoiceSegmentedButtonRow,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
 import {
-  Field,
-  GhostButton,
-  LogRow,
-  PageHeader,
-  PrimaryButton,
-  Rule,
-  SectionHeader,
-  StatCard,
-} from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
-import { guestsApi } from "../../services/api";
-import type { Database } from "../../utils/supabase-types";
-import { useAuth } from "../../utils/auth-context";
-import { getAllTokensExcept, sendPushNotification } from "../../utils/notifications";
+  align,
+  background,
+  clickable,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  imePadding,
+  padding,
+  paddingAll,
+  Shapes,
+  size,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { DateTimePickerAndroid } from "@react-native-community/datetimepicker";
+import { useEffect, useState } from "react";
 
 type GuestRow = Database["public"]["Tables"]["guests"]["Row"];
+type UserRow = Database["public"]["Tables"]["users"]["Row"];
+
+const parseTs = (s: string) => new Date(s.endsWith("Z") ? s : `${s}Z`);
+const firstName = (fullname: string) => fullname.split(" ")[0] ?? fullname;
+const timeLabel = (d: Date) =>
+  d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+const dateTimeLabel = (d: Date) =>
+  `${d.getDate().toString().padStart(2, "0")} ${d.toLocaleString("id-ID", { month: "short" })} · ${timeLabel(d)}`;
+
+function durationLabel(inD: Date, outD: Date) {
+  const mins = Math.max(
+    0,
+    Math.round((outD.getTime() - inD.getTime()) / 60000),
+  );
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h > 0 ? `${h}j ${m}m` : `${m}m`;
+}
+
+function openDateTimePicker(current: Date, onSelect: (d: Date) => void) {
+  DateTimePickerAndroid.open({
+    value: current,
+    mode: "date",
+    is24Hour: true,
+    onChange: (e, date) => {
+      if (e.type === "dismissed" || !date) return;
+      DateTimePickerAndroid.open({
+        value: date,
+        mode: "time",
+        is24Hour: true,
+        onChange: (e2, finalDate) => {
+          if (e2.type === "dismissed" || !finalDate) return;
+          onSelect(finalDate);
+        },
+      });
+    },
+  });
+}
 
 export default function GuestsScreen() {
   const { user } = useAuth();
-  const [addModal, setAddModal] = useState(false);
+  const colors = useMaterialColors();
+
+  const [rawGuests, setRawGuests] = useState<GuestRow[]>([]);
+  const [users, setUsers] = useState<Record<string, UserRow>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [segment, setSegment] = useState<"inside" | "semua">("inside");
+
+  const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [activity, setActivity] = useState("");
   const [checkIn, setCheckIn] = useState<Date>(new Date());
   const [checkOut, setCheckOut] = useState<Date | undefined>(undefined);
-  const [showCheckIn, setShowCheckIn] = useState(false);
-  const [showCheckOut, setShowCheckOut] = useState(false);
-
-  const openDateTimePicker = (current: Date, onSelect: (d: Date) => void, show: (v: boolean) => void) => {
-    if (Platform.OS === "android") {
-      DateTimePickerAndroid.open({
-        value: current,
-        mode: "date",
-        is24Hour: true,
-        onChange: (e, date) => {
-          if (e.type === "dismissed" || !date) return;
-          DateTimePickerAndroid.open({
-            value: date,
-            mode: "time",
-            is24Hour: true,
-            onChange: (e2, finalDate) => {
-              if (e2.type === "dismissed" || !finalDate) return;
-              onSelect(finalDate);
-            },
-          });
-        },
-      });
-    } else {
-      show(true);
-    }
-  };
-  const [rawGuests, setRawGuests] = useState<GuestRow[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [checkoutTarget, setCheckoutTarget] = useState<GuestRow | null>(null);
-  const [statInside, setStatInside] = useState(0);
-  const [statToday, setStatToday] = useState(0);
-  const [statMonth, setStatMonth] = useState(0);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     loadGuests();
   }, []);
 
   async function loadGuests() {
-    const { data, error } = await guestsApi.getAll();
-    if (error) {
-      console.error(error);
-      return;
-    }
-    if (!data) return;
-
-    const today = new Date().toDateString();
-    const thisMonth = new Date().getMonth();
-    const thisYear = new Date().getFullYear();
-
-    setStatInside(data.filter((g) => !g.check_out).length);
-    setStatToday(
-      data.filter((g) => new Date(g.check_in).toDateString() === today).length,
-    );
-    setStatMonth(
-      data.filter((g) => {
-        const d = new Date(g.check_in);
-        return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-      }).length,
-    );
-
-    setRawGuests(data);
+    const [guestRes, userRes] = await Promise.all([
+      guestsApi.getAll(),
+      usersApi.getAll(),
+    ]);
+    if (guestRes.data) setRawGuests(guestRes.data);
+    const map: Record<string, UserRow> = {};
+    (userRes.data ?? []).forEach((u) => {
+      map[u.id] = u;
+    });
+    setUsers(map);
   }
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadGuests().finally(() => setRefreshing(false));
+  };
 
   async function handleAddGuest() {
     if (checkOut && checkOut <= checkIn) {
       alert("Waktu keluar harus setelah waktu masuk.");
       return;
     }
+    setSaving(true);
     try {
       const { data: newGuest, error } = await guestsApi.create({
         name,
@@ -114,14 +141,10 @@ export default function GuestsScreen() {
         check_out: checkOut ? checkOut.toISOString() : null,
         invited_by: user?.id ?? null,
       });
-
       if (error) throw error;
       if (newGuest) {
         setRawGuests((prev) => [newGuest, ...prev]);
-        setStatInside((n) => (newGuest.check_out ? n : n + 1));
-        setStatToday((n) => n + 1);
-        setStatMonth((n) => n + 1);
-        setAddModal(false);
+        setAddOpen(false);
         setName("");
         setPhone("");
         setActivity("");
@@ -142,227 +165,481 @@ export default function GuestsScreen() {
       }
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setSaving(false);
     }
   }
 
   async function handleCheckOut(id: string) {
     try {
-      const { error } = await guestsApi.update(id, { check_out: new Date().toISOString() });
+      const nowIso = new Date().toISOString();
+      const { error } = await guestsApi.update(id, { check_out: nowIso });
       if (error) throw error;
       setRawGuests((prev) =>
-        prev.map((g) => (g.id === id ? { ...g, check_out: new Date().toISOString() } : g)),
+        prev.map((g) => (g.id === id ? { ...g, check_out: nowIso } : g)),
       );
-      setStatInside((n) => Math.max(0, n - 1));
     } catch (err: any) {
       alert(err.message);
     }
   }
 
-  const formatDateTime = (d?: Date) => {
-    if (!d) return "";
-    const day = d.getDate().toString().padStart(2, "0");
-    const month = d.toLocaleString("id-ID", { month: "short" });
-    const hh = d.getHours().toString().padStart(2, "0");
-    const mm = d.getMinutes().toString().padStart(2, "0");
-    return `${day} ${month} · ${hh}:${mm}`;
-  };
+  const insideGuests = rawGuests
+    .filter((g) => !g.check_out)
+    .sort(
+      (a, b) => parseTs(b.check_in).getTime() - parseTs(a.check_in).getTime(),
+    );
+
+  const todayStr = new Date().toDateString();
+  const checkedOutToday = rawGuests
+    .filter(
+      (g) => g.check_out && parseTs(g.check_out).toDateString() === todayStr,
+    )
+    .sort(
+      (a, b) =>
+        parseTs(b.check_out!).getTime() - parseTs(a.check_out!).getTime(),
+    );
+
+  const allSorted = rawGuests
+    .slice()
+    .sort(
+      (a, b) => parseTs(b.check_in).getTime() - parseTs(a.check_in).getTime(),
+    );
+
+  const inviterLabel = (g: GuestRow) =>
+    g.invited_by === user?.id
+      ? "kamu"
+      : firstName(users[g.invited_by ?? ""]?.fullname ?? "Seseorang");
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => { setRefreshing(true); await loadGuests(); setRefreshing(false); }}
-              tintColor={Colors.accent}
-            />
-          }
+    <Host style={{ flex: 1 }}>
+      <Box modifiers={[fillMaxSize()]}>
+        <PullToRefreshBox
+          isRefreshing={refreshing}
+          onRefresh={onRefresh}
+          contentAlignment="topCenter"
+          modifiers={[fillMaxSize(), background(colors.background)]}
         >
-        <PageHeader title="TAMU" subtitle="Monitoring kunjungan" topInset={60} />
-
-        <View style={styles.statsRow}>
-          <StatCard value={String(statInside)} label="Di dalam" sub="SAAT INI" />
-          <View style={{ width: Spacing.sm }} />
-          <StatCard value={String(statToday)} label="Hari ini" sub="TOTAL KUNJUNGAN" />
-          <View style={{ width: Spacing.sm }} />
-          <StatCard value={String(statMonth)} label="Bulan ini" sub="TOTAL" />
-        </View>
-
-        <View style={{ paddingHorizontal: Spacing.md, marginBottom: Spacing.lg }}>
-          <PrimaryButton label="DAFTARKAN TAMU" onPress={() => setAddModal(true)} />
-        </View>
-
-        <SectionHeader label="Log Kunjungan" />
-        <Rule />
-        {rawGuests.map((g) => {
-          const parseTs = (s: string) => new Date(s.endsWith("Z") ? s : s + "Z");
-          const checkInTime = parseTs(g.check_in).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-          const checkOutTime = g.check_out
-            ? parseTs(g.check_out).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })
-            : null;
-          const canCheckOut = !g.check_out && g.invited_by === user?.id;
-          return (
-            <LogRow
-              key={g.id}
-              date={parseTs(g.check_in).toLocaleDateString("id-ID", { day: "2-digit", month: "short" })}
-              title={g.name}
-              meta={`Diundang · ${checkInTime} — ${checkOutTime ?? "masih di dalam"}`}
-              badge={g.check_out ? "Selesai" : "Di dalam"}
-              badgeType={g.check_out ? "muted" : "warning"}
-              onPress={canCheckOut ? () => setCheckoutTarget(g) : undefined}
-            />
-          );
-        })}
-      </ScrollView>
-
-      {/* Checkout confirmation modal */}
-      <Modal visible={!!checkoutTarget} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>CHECKOUT TAMU</Text>
-            <Text style={styles.modalSub}>
-              Checkout <Text style={{ color: Colors.text }}>{checkoutTarget?.name}</Text> sekarang?
+          <Column
+            verticalArrangement={{ spacedBy: 20 }}
+            modifiers={[
+              fillMaxSize(),
+              verticalScroll(),
+              padding(16, 56, 16, 100),
+            ]}
+          >
+            <Text
+              style={{ typography: "headlineMedium", fontWeight: "bold" }}
+              color={colors.onBackground}
+            >
+              Tamu
             </Text>
-            <View style={styles.modalActions}>
-              <GhostButton label="BATAL" onPress={() => setCheckoutTarget(null)} />
-              <View style={{ width: Spacing.sm }} />
-              <PrimaryButton
-                label="KONFIRMASI"
-                onPress={async () => {
-                  if (!checkoutTarget) return;
-                  await handleCheckOut(checkoutTarget.id);
-                  setCheckoutTarget(null);
-                }}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
 
-      <Modal visible={addModal} transparent animationType="slide">
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>DAFTARKAN TAMU</Text>
-            <Rule style={{ marginVertical: Spacing.md }} />
-            <ScrollView>
-              <Field label="Nama Tamu" value={name} onChangeText={setName} placeholder="Nama lengkap" />
-              <Field
-                label="No. HP"
-                value={phone}
-                onChangeText={setPhone}
-                placeholder="08xx-xxxx-xxxx"
-                keyboardType="phone-pad"
-              />
-              <Field
-                label="Kegiatan"
-                value={activity}
-                onChangeText={setActivity}
-                placeholder="Kunjungan, belajar, dll."
-              />
+            <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
+              <SegmentedButton
+                selected={segment === "inside"}
+                onClick={() => setSegment("inside")}
+              >
+                <SegmentedButton.Label>
+                  <Text>{`Di dalam · ${insideGuests.length}`}</Text>
+                </SegmentedButton.Label>
+              </SegmentedButton>
+              <SegmentedButton
+                selected={segment === "semua"}
+                onClick={() => setSegment("semua")}
+              >
+                <SegmentedButton.Label>
+                  <Text>Semua</Text>
+                </SegmentedButton.Label>
+              </SegmentedButton>
+            </SingleChoiceSegmentedButtonRow>
 
-              <TouchableOpacity onPress={() => openDateTimePicker(checkIn, setCheckIn, setShowCheckIn)}>
-                <View pointerEvents="none">
-                  <Field label="Waktu Masuk" value={formatDateTime(checkIn)} editable={false} placeholder="01 Jul · 14:00" />
-                </View>
-              </TouchableOpacity>
-              {showCheckIn && Platform.OS !== "android" && (
-                <DateTimePicker
-                  value={checkIn}
-                  mode="datetime"
-                  is24Hour
-                  display="default"
-                  onChange={(_, selectedDate) => {
-                    setShowCheckIn(false);
-                    if (selectedDate) setCheckIn(selectedDate);
-                  }}
+            {segment === "inside" ? (
+              <>
+                <Column verticalArrangement={{ spacedBy: 12 }}>
+                  {insideGuests.length === 0 && (
+                    <Text
+                      style={{ typography: "bodyMedium" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      Tidak ada tamu di dalam saat ini.
+                    </Text>
+                  )}
+                  {insideGuests.map((g) => (
+                    <OutlinedCard key={g.id} modifiers={[fillMaxWidth()]}>
+                      <Row
+                        verticalAlignment="center"
+                        horizontalArrangement={{ spacedBy: 12 }}
+                        modifiers={[paddingAll(16)]}
+                      >
+                        <Box
+                          contentAlignment="center"
+                          modifiers={[
+                            size(40, 40),
+                            clip(Shapes.RoundedCorner(20)),
+                            background(colors.primaryContainer),
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              typography: "titleMedium",
+                              fontWeight: "bold",
+                            }}
+                            color={colors.onPrimaryContainer}
+                          >
+                            {g.name[0]?.toUpperCase() ?? "?"}
+                          </Text>
+                        </Box>
+                        <Column
+                          verticalArrangement={{ spacedBy: 2 }}
+                          modifiers={[weight(1)]}
+                        >
+                          <Text
+                            style={{
+                              typography: "bodyLarge",
+                              fontWeight: "bold",
+                            }}
+                            color={colors.onSurface}
+                          >
+                            {g.name}
+                          </Text>
+                          <Text
+                            style={{ typography: "bodySmall" }}
+                            color={colors.onSurfaceVariant}
+                          >
+                            {`Masuk ${timeLabel(parseTs(g.check_in))} · diundang ${inviterLabel(g)}`}
+                          </Text>
+                        </Column>
+                        {g.invited_by === user?.id && (
+                          <Button onClick={() => handleCheckOut(g.id)}>
+                            <Text
+                              style={{
+                                typography: "labelLarge",
+                                fontWeight: "bold",
+                              }}
+                              color={colors.onPrimary}
+                            >
+                              Checkout
+                            </Text>
+                          </Button>
+                        )}
+                      </Row>
+                    </OutlinedCard>
+                  ))}
+                </Column>
+
+                {checkedOutToday.length > 0 && (
+                  <Column verticalArrangement={{ spacedBy: 8 }}>
+                    <Text
+                      style={{
+                        typography: "labelLarge",
+                        fontWeight: "bold",
+                        letterSpacing: 0.5,
+                      }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      SUDAH KELUAR HARI INI
+                    </Text>
+                    {checkedOutToday.map((g) => (
+                      <Row
+                        key={g.id}
+                        verticalAlignment="center"
+                        horizontalArrangement={{ spacedBy: 12 }}
+                        modifiers={[padding(0, 8, 0, 8)]}
+                      >
+                        <Box
+                          contentAlignment="center"
+                          modifiers={[
+                            size(36, 36),
+                            clip(Shapes.RoundedCorner(18)),
+                            background(colors.secondaryContainer),
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              typography: "titleSmall",
+                              fontWeight: "bold",
+                            }}
+                            color={colors.onSecondaryContainer}
+                          >
+                            {g.name[0]?.toUpperCase() ?? "?"}
+                          </Text>
+                        </Box>
+                        <Column
+                          verticalArrangement={{ spacedBy: 2 }}
+                          modifiers={[weight(1)]}
+                        >
+                          <Text
+                            style={{ typography: "bodyMedium" }}
+                            color={colors.onSurface}
+                          >
+                            {g.name}
+                          </Text>
+                          <Text
+                            style={{ typography: "bodySmall" }}
+                            color={colors.onSurfaceVariant}
+                          >
+                            {`${timeLabel(parseTs(g.check_in))} — ${timeLabel(parseTs(g.check_out!))} · ${durationLabel(parseTs(g.check_in), parseTs(g.check_out!))}`}
+                          </Text>
+                        </Column>
+                        <Icon
+                          source={CheckCircle}
+                          tint={colors.onSurfaceVariant}
+                          size={18}
+                        />
+                      </Row>
+                    ))}
+                  </Column>
+                )}
+              </>
+            ) : (
+              <Column verticalArrangement={{ spacedBy: 4 }}>
+                {allSorted.length === 0 && (
+                  <Text
+                    style={{ typography: "bodyMedium" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    Belum ada tamu.
+                  </Text>
+                )}
+                {allSorted.map((g) => (
+                  <Row
+                    key={g.id}
+                    verticalAlignment="center"
+                    horizontalArrangement={{ spacedBy: 12 }}
+                    modifiers={[padding(0, 10, 0, 10)]}
+                  >
+                    <Text
+                      style={{ typography: "labelMedium", fontWeight: "bold" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      {parseTs(g.check_in)
+                        .toLocaleDateString("id-ID", {
+                          day: "2-digit",
+                          month: "short",
+                        })
+                        .toUpperCase()}
+                    </Text>
+                    <Box
+                      contentAlignment="center"
+                      modifiers={[
+                        size(36, 36),
+                        clip(Shapes.RoundedCorner(18)),
+                        background(colors.primaryContainer),
+                      ]}
+                    >
+                      <Text
+                        style={{ typography: "titleSmall", fontWeight: "bold" }}
+                        color={colors.onPrimaryContainer}
+                      >
+                        {g.name[0]?.toUpperCase() ?? "?"}
+                      </Text>
+                    </Box>
+                    <Column
+                      verticalArrangement={{ spacedBy: 2 }}
+                      modifiers={[weight(1)]}
+                    >
+                      <Text
+                        style={{ typography: "bodyMedium" }}
+                        color={colors.onSurface}
+                      >
+                        {g.name}
+                      </Text>
+                      <Text
+                        style={{ typography: "bodySmall" }}
+                        color={colors.onSurfaceVariant}
+                      >
+                        {`Diundang ${inviterLabel(g)}`}
+                      </Text>
+                    </Column>
+                    <Icon
+                      source={g.check_out ? Logout : Login}
+                      tint={
+                        g.check_out ? colors.onSurfaceVariant : colors.primary
+                      }
+                      size={20}
+                    />
+                  </Row>
+                ))}
+              </Column>
+            )}
+          </Column>
+        </PullToRefreshBox>
+
+        <ExtendedFloatingActionButton
+          onClick={() => setAddOpen(true)}
+          modifiers={[align("bottomEnd"), padding(0, 0, 20, 24)]}
+        >
+          <ExtendedFloatingActionButton.Icon>
+            <Icon source={Edit} size={20} />
+          </ExtendedFloatingActionButton.Icon>
+          <ExtendedFloatingActionButton.Text>
+            <Text style={{ typography: "labelLarge", fontWeight: "bold" }}>
+              Daftarkan tamu
+            </Text>
+          </ExtendedFloatingActionButton.Text>
+        </ExtendedFloatingActionButton>
+      </Box>
+
+      {addOpen && (
+        <ModalBottomSheet onDismissRequest={() => setAddOpen(false)}>
+          <Column
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              imePadding(),
+              padding(24, 8, 24, 32),
+            ]}
+          >
+            <Text
+              style={{ typography: "headlineSmall", fontWeight: "bold" }}
+              color={colors.onSurface}
+            >
+              Daftarkan tamu
+            </Text>
+
+            <OutlinedTextField
+              singleLine
+              onValueChange={setName}
+              keyboardOptions={{ capitalization: "words" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Nama tamu</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <OutlinedTextField
+              singleLine
+              onValueChange={setPhone}
+              keyboardOptions={{ keyboardType: "phone" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>No. HP</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <OutlinedTextField
+              singleLine
+              onValueChange={setActivity}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Kegiatan</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <OutlinedCard
+              modifiers={[fillMaxWidth(), clickable(() => openDateTimePicker(checkIn, setCheckIn))]}
+            >
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[fillMaxWidth(), padding(16, 14, 16, 14)]}
+              >
+                <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+                  <Text
+                    style={{ typography: "labelMedium" }}
+                    color={colors.onSurfaceVariant}
+                    overflow="ellipsis"
+                    maxLines={1}
+                  >
+                    Waktu masuk
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyLarge" }}
+                    color={colors.onSurface}
+                    overflow="ellipsis"
+                    maxLines={1}
+                  >
+                    {dateTimeLabel(checkIn)}
+                  </Text>
+                </Column>
+                <Icon
+                  source={Schedule}
+                  tint={colors.onSurfaceVariant}
+                  size={20}
                 />
-              )}
+              </Row>
+            </OutlinedCard>
 
-              <TouchableOpacity onPress={() => openDateTimePicker(checkOut && checkOut > checkIn ? checkOut : checkIn, (d) => {
-                  if (d <= checkIn) { alert("Waktu keluar harus setelah waktu masuk."); return; }
-                  setCheckOut(d);
-                }, setShowCheckOut)}>
-                <View pointerEvents="none">
-                  <Field label="Waktu Keluar" value={formatDateTime(checkOut)} editable={false} placeholder="01 Jul · 16:00 (opsional)" />
-                </View>
-              </TouchableOpacity>
-              {showCheckOut && Platform.OS !== "android" && (
-                <DateTimePicker
-                  value={checkOut && checkOut > checkIn ? checkOut : checkIn}
-                  mode="datetime"
-                  minimumDate={checkIn}
-                  is24Hour
-                  display="default"
-                  onChange={(_, selectedDate) => {
-                    setShowCheckOut(false);
-                    if (selectedDate) setCheckOut(selectedDate);
-                  }}
+            <OutlinedCard
+              modifiers={[
+                fillMaxWidth(),
+                clickable(() =>
+                  openDateTimePicker(
+                    checkOut && checkOut > checkIn ? checkOut : checkIn,
+                    (d) => {
+                      if (d <= checkIn) {
+                        alert("Waktu keluar harus setelah waktu masuk.");
+                        return;
+                      }
+                      setCheckOut(d);
+                    },
+                  ),
+                ),
+              ]}
+            >
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[fillMaxWidth(), padding(16, 14, 16, 14)]}
+              >
+                <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+                  <Text
+                    style={{ typography: "labelMedium" }}
+                    color={colors.onSurfaceVariant}
+                    overflow="ellipsis"
+                    maxLines={1}
+                  >
+                    Waktu keluar (opsional)
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyLarge" }}
+                    color={colors.onSurface}
+                    overflow="ellipsis"
+                    maxLines={1}
+                  >
+                    {checkOut ? dateTimeLabel(checkOut) : "Belum diatur"}
+                  </Text>
+                </Column>
+                <Icon
+                  source={Schedule}
+                  tint={colors.onSurfaceVariant}
+                  size={20}
                 />
-              )}
+              </Row>
+            </OutlinedCard>
 
-              <View style={styles.modalActions}>
-                <GhostButton label="BATAL" onPress={() => setAddModal(false)} />
-                <View style={{ width: Spacing.sm }} />
-                <PrimaryButton label="SIMPAN" onPress={handleAddGuest} />
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 12 }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedButton
+                onClick={() => setAddOpen(false)}
+                modifiers={[weight(1)]}
+              >
+                <Text
+                  style={{ typography: "labelLarge" }}
+                  color={colors.primary}
+                >
+                  Batal
+                </Text>
+              </OutlinedButton>
+              <Button
+                enabled={!saving}
+                onClick={handleAddGuest}
+                modifiers={[weight(1)]}
+              >
+                <ButtonContent loading={saving} label="Simpan" color={colors.onPrimary} />
+              </Button>
+            </Row>
+          </Column>
+        </ModalBottomSheet>
+      )}
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  statsRow: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(28,28,30,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: 40,
-    maxHeight: "85%",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: Spacing.lg,
-  },
-  modalTitle: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.lg,
-    color: Colors.text,
-    letterSpacing: -0.5,
-  },
-  modalActions: {
-    flexDirection: "row",
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.md,
-  },
-  modalSub: {
-    fontSize: FontSize.base,
-    color: Colors.textMuted,
-    marginTop: Spacing.xs,
-    marginBottom: Spacing.lg,
-  },
-});

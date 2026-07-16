@@ -152,6 +152,13 @@ export const ruleRequestVotesApi = {
       .from("rule_request_votes")
       .select("*")
       .eq("voter_id", voterId),
+  // Row Level Security on rule_request_votes only lets a member SELECT their own
+  // vote row, so listing every voter for a request has to go through this
+  // SECURITY DEFINER RPC (it exposes who voted, not their approve/decline choice).
+  getVoters: async (ruleRequestId: string) =>
+    await supabase.rpc("get_rule_request_voters", {
+      p_rule_request_id: ruleRequestId,
+    }),
   cast: async (
     ruleRequestId: string,
     voterId: string,

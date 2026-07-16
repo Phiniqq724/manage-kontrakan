@@ -1,32 +1,50 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { ButtonContent } from "@/components/ButtonContent";
+import { piketRequestsApi, piketsApi, usersApi } from "@/services/api";
+import { useAuth } from "@/utils/auth-context";
+import { sendPushNotification } from "@/utils/notifications";
+import { getTodayStr } from "@/utils/piket-utils";
+import type { Database } from "@/utils/supabase-types";
+import { captureAndUploadImage } from "@/utils/upload";
+import Check from "@expo/material-symbols/check.xml";
+import Close from "@expo/material-symbols/close.xml";
+import History from "@expo/material-symbols/history.xml";
+import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
+import { Host } from "@expo/ui";
 import {
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
+  Box,
+  Button,
+  Card,
+  Column,
+  FilledTonalButton,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  ModalBottomSheet,
+  OutlinedButton,
+  OutlinedCard,
+  OutlinedTextField,
+  PullToRefreshBox,
+  RadioButton,
+  Row,
+  Shape,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
 import {
-  Badge,
-  Field,
-  GhostButton,
-  PageHeader,
-  PrimaryButton,
-  Rule,
-  SectionHeader,
-  StatCard,
-} from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
-import { piketRequestsApi, piketsApi, usersApi } from "../../services/api";
-import { useAuth } from "../../utils/auth-context";
-import { sendPushNotification } from "../../utils/notifications";
-import { getTodayStr } from "../../utils/piket-utils";
-import type { Database } from "../../utils/supabase-types";
-import { captureAndUploadImage } from "../../utils/upload";
+  background,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  height,
+  padding,
+  paddingAll,
+  selectable,
+  Shapes,
+  size,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { useEffect, useState } from "react";
 
 type PiketRow = Database["public"]["Tables"]["pikets"]["Row"];
 type PiketRequestRow = Database["public"]["Tables"]["piket_requests"]["Row"];
@@ -38,22 +56,32 @@ const STATUS_LABEL: Record<string, string> = {
   absent: "Absen",
   izin: "Izin",
 };
-const STATUS_TYPE: Record<string, "warning" | "success" | "danger" | "muted"> =
-  {
-    pending: "warning",
-    done: "success",
-    absent: "danger",
-    izin: "muted",
-  };
+
+function firstName(fullname: string) {
+  return fullname.split(" ")[0] ?? fullname;
+}
+
+function relativeDay(dayStr: string, todayStr: string) {
+  const diff = Math.round(
+    (new Date(dayStr).getTime() - new Date(todayStr).getTime()) / 86400000,
+  );
+  if (diff <= 0) return "Hari ini";
+  if (diff === 1) return "Besok";
+  return `${diff} hari lagi`;
+}
 
 export default function PiketScreen() {
   const { user: currentUser } = useAuth();
+  const colors = useMaterialColors();
+
   const [pikets, setPikets] = useState<PiketRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
   const [pendingRequests, setPendingRequests] = useState<PiketRequestRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [assignModal, setAssignModal] = useState(false);
-  const [myNextPiket, setMyNextPiket] = useState<PiketRow | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  const [izinOpen, setIzinOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [selectedReplacementId, setSelectedReplacementId] = useState<
     string | null
@@ -83,21 +111,6 @@ export default function PiketScreen() {
     setPikets(allPikets);
 
     if (currentUser) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const next =
-        allPikets
-          .filter(
-            (p) =>
-              p.assign_to === currentUser.id &&
-              new Date(p.day) >= today &&
-              p.status !== "done",
-          )
-          .sort(
-            (a, b) => new Date(a.day).getTime() - new Date(b.day).getTime(),
-          )[0] ?? null;
-      setMyNextPiket(next ?? null);
-
       const pending = (reqRes.data ?? []).filter(
         (r) => r.assign_to === currentUser.id && r.status === "pending",
       );
@@ -105,12 +118,99 @@ export default function PiketScreen() {
     }
   }
 
-  async function handleSubmitRequest() {
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData().finally(() => setRefreshing(false));
+  };
+
+  const todayStr = getTodayStr();
+  const myNextPiket =
+    pikets
+      .filter(
+        (p) =>
+          p.assign_to === currentUser?.id &&
+          p.day >= todayStr &&
+          p.status !== "done",
+      )
+      .sort(
+        (a, b) => new Date(a.day).getTime() - new Date(b.day).getTime(),
+      )[0] ?? null;
+
+  const otherMembers = Object.values(users).filter(
+    (u) => u.id !== currentUser?.id,
+  );
+
+  const upcomingGroups: { day: string; group: PiketRow[] }[] = (() => {
+    const map: Record<string, PiketRow[]> = {};
+    pikets
+      .filter((p) => p.day >= todayStr)
+      .forEach((p) => {
+        (map[p.day] ??= []).push(p);
+      });
+    return Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, group]) => ({ day, group }));
+  })();
+
+  const pastGroups: { day: string; group: PiketRow[] }[] = (() => {
+    const map: Record<string, PiketRow[]> = {};
+    pikets
+      .filter((p) => p.day < todayStr)
+      .forEach((p) => {
+        (map[p.day] ??= []).push(p);
+      });
+    return Object.entries(map)
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([day, group]) => ({ day, group }));
+  })();
+
+  async function handleFinishPiket(piket: PiketRow) {
+    setFinishing(true);
+    try {
+      const url = await captureAndUploadImage(
+        "piket-evidence",
+        currentUser?.id ?? "anon",
+      );
+      if (!url) return;
+      const { error } = await piketsApi.update(piket.id, {
+        status: "done",
+        finished: true,
+        docs: url,
+      });
+      if (error) throw error;
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setFinishing(false);
+    }
+  }
+
+  async function handleRespondRequest(req: PiketRequestRow, accept: boolean) {
+    try {
+      const { error: reqError } = await piketRequestsApi.update(req.id, {
+        status: accept ? "accepted" : "declined",
+      });
+      if (reqError) throw reqError;
+
+      if (accept && req.piket_id) {
+        const { error: piketError } = await piketsApi.update(req.piket_id, {
+          assign_to: currentUser!.id,
+          status: "izin",
+        });
+        if (piketError) throw piketError;
+      }
+      loadData();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  }
+
+  async function handleSubmitIzin() {
     if (!myNextPiket || !selectedReplacementId) {
       alert("Pilih penghuni pengganti.");
       return;
     }
-    // Block assigning to the partner on the same Sunday
     const partner = pikets.find(
       (p) => p.day === myNextPiket.day && p.id !== myNextPiket.id,
     );
@@ -130,15 +230,15 @@ export default function PiketScreen() {
       });
       if (error) throw error;
 
-      // Notify the replacement person
       const replacement = users[selectedReplacementId];
       if (replacement?.push_token) {
-        const piketDate = myNextPiket
-          ? new Date(myNextPiket.day).toLocaleDateString("id-ID", {
-              day: "numeric",
-              month: "long",
-            })
-          : "";
+        const piketDate = new Date(myNextPiket.day).toLocaleDateString(
+          "id-ID",
+          {
+            day: "numeric",
+            month: "long",
+          },
+        );
         await sendPushNotification(
           replacement.push_token,
           "Permintaan Tukar Piket",
@@ -146,7 +246,7 @@ export default function PiketScreen() {
         );
       }
 
-      setAssignModal(false);
+      setIzinOpen(false);
       setReason("");
       setSelectedReplacementId(null);
     } catch (err: any) {
@@ -156,484 +256,516 @@ export default function PiketScreen() {
     }
   }
 
-  async function handleFinishPiket(piket: PiketRow) {
-    try {
-      const url = await captureAndUploadImage(
-        "piket-evidence",
-        currentUser?.id ?? "anon",
-      );
-      if (!url) return;
-      const { error } = await piketsApi.update(piket.id, {
-        status: "done",
-        finished: true,
-        docs: url,
-      });
-      if (error) throw error;
-      loadData();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  }
-
-  async function handleRespondRequest(req: PiketRequestRow, accept: boolean) {
-    try {
-      const { error: reqError } = await piketRequestsApi.update(req.id, {
-        status: accept ? "accepted" : "declined",
-      });
-      if (reqError) throw reqError;
-
-      if (accept && req.piket_id) {
-        const { error: piketError } = await piketsApi.update(req.piket_id, {
-          assign_to: currentUser!.id,
-          status: "izin",
-        });
-        if (piketError) throw piketError;
-      }
-
-      loadData();
-    } catch (err: any) {
-      alert(err.message);
-    }
-  }
-
-  const thisMonth = new Date().getMonth();
-  const thisYear = new Date().getFullYear();
-  const monthPikets = pikets.filter((p) => {
-    const d = new Date(p.day);
-    return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-  });
-  const statDone = monthPikets.filter(
-    (p) => p.status === "done" && p.assign_to === currentUser?.id,
-  ).length;
-  const statPending = monthPikets.filter(
-    (p) => p.assign_to === currentUser?.id && p.status === "pending",
-  ).length;
-  const statIzin = monthPikets.filter(
-    (p) => p.status === "izin" && p.assign_to === currentUser?.id,
-  ).length;
-
-  const otherMembers = Object.values(users).filter(
-    (u) => u.id !== currentUser?.id,
-  );
+  const namesLine = (group: PiketRow[]) =>
+    group.map((p) => {
+      const name = p.assign_to
+        ? firstName(users[p.assign_to]?.fullname ?? "-")
+        : "-";
+      const isMe = p.assign_to === currentUser?.id;
+      return { name, isMe };
+    });
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await loadData();
-              setRefreshing(false);
-            }}
-            tintColor={Colors.accent}
-          />
-        }
+    <Host style={{ flex: 1 }}>
+      <PullToRefreshBox
+        isRefreshing={refreshing}
+        onRefresh={onRefresh}
+        contentAlignment="topCenter"
+        modifiers={[fillMaxSize(), background(colors.background)]}
       >
-        <PageHeader
-          title="PIKET"
-          subtitle="Jadwal kebersihan penghuni"
-          topInset={60}
-        />
-
-        <View style={styles.statsRow}>
-          <StatCard value={String(statDone)} label="Selesai" sub="BULAN INI" />
-          <View style={{ width: Spacing.sm }} />
-          <StatCard
-            value={String(statPending)}
-            label="Tertunda"
-            sub="PERLU PERHATIAN"
-          />
-          <View style={{ width: Spacing.sm }} />
-          <StatCard value={String(statIzin)} label="Izin" sub="DIALIHKAN" />
-        </View>
-
-        {pendingRequests.length > 0 && (
-          <View style={{ marginBottom: Spacing.lg }}>
-            <SectionHeader label="Permintaan Masuk" />
-            <Rule />
-            {pendingRequests.map((req) => {
-              const piket = pikets.find((p) => p.id === req.piket_id);
-              const requester = piket?.assign_to
-                ? users[piket.assign_to]
-                : null;
-              return (
-                <View key={req.id} style={styles.requestCard}>
-                  <View style={styles.requestInfo}>
-                    <Text style={styles.requestTitle}>
-                      {requester?.fullname ?? "Seseorang"} minta tukar piket
-                    </Text>
-                    <Text style={styles.requestMeta}>
-                      {piket
-                        ? new Date(piket.day).toLocaleDateString("id-ID", {
-                            weekday: "long",
-                            day: "numeric",
-                            month: "long",
-                          })
-                        : ""}
-                    </Text>
-                    {req.reason && (
-                      <Text style={styles.requestReason}>"{req.reason}"</Text>
-                    )}
-                  </View>
-                  <View style={styles.requestBtns}>
-                    <TouchableOpacity
-                      style={[styles.respondBtn, styles.acceptBtn]}
-                      onPress={() => handleRespondRequest(req, true)}
-                    >
-                      <Ionicons
-                        name="checkmark"
-                        size={16}
-                        color={Colors.sage}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.respondBtn, styles.declineBtn]}
-                      onPress={() => handleRespondRequest(req, false)}
-                    >
-                      <Ionicons name="close" size={16} color={Colors.danger} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-
-        {myNextPiket && (
-          <View style={styles.turnNotice}>
-            <View style={styles.turnLeft}>
-              <Text style={styles.turnLabel}>GILIRAN KAMU</Text>
-              <Text style={styles.turnDate}>
-                {new Date(myNextPiket.day).toLocaleDateString("id-ID", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
+        <Column
+          verticalArrangement={{ spacedBy: 24 }}
+          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+        >
+          {/* Header */}
+          <Row
+            horizontalArrangement="spaceBetween"
+            verticalAlignment="center"
+            modifiers={[fillMaxWidth()]}
+          >
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "headlineMedium", fontWeight: "bold" }}
+                color={colors.onBackground}
+              >
+                Piket
               </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.assignBtn}
-              onPress={() => setAssignModal(true)}
-            >
-              <Text style={styles.assignBtnText}>MINTA IZIN</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={{ marginTop: Spacing.lg }}>
-          <SectionHeader label="Jadwal Piket" />
-          <Rule />
-          {(() => {
-            const todayStr = getTodayStr();
-            const groupedMap: Record<string, PiketRow[]> = {};
-            pikets
-              .filter((p) => p.day >= todayStr)
-              .forEach((p) => {
-                (groupedMap[p.day] ??= []).push(p);
-              });
-            return Object.entries(groupedMap)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([day, group]) => {
-                const isToday = day === todayStr;
-                const myPiketToday = isToday
-                  ? group.find(
-                      (p) => p.assign_to === currentUser?.id && !p.finished,
-                    )
-                  : null;
-                return (
-                  <View key={day}>
-                    <View style={styles.piketGroup}>
-                      <Text style={styles.piketGroupDate}>
-                        {new Date(day).toLocaleDateString("id-ID", {
-                          day: "2-digit",
-                          month: "short",
-                        })}
-                        {isToday ? " · HARI INI" : ""}
-                      </Text>
-                      {group.map((p) => {
-                        const u = p.assign_to ? users[p.assign_to] : null;
-                        return (
-                          <View key={p.id} style={styles.piketGroupRow}>
-                            <Text style={styles.piketGroupName}>
-                              {u?.fullname ?? "-"}{" "}
-                              {p.assign_to === currentUser?.id && "(You)"}
-                            </Text>
-                            <View style={styles.piketGroupRight}>
-                              {p.finished && (
-                                <Ionicons
-                                  name="checkmark-circle"
-                                  size={14}
-                                  color={Colors.sage}
-                                />
-                              )}
-                              <Badge
-                                label={STATUS_LABEL[p.status] ?? p.status}
-                                type={
-                                  p.assign_to === currentUser?.id
-                                    ? "warning"
-                                    : (STATUS_TYPE[p.status] ?? "muted")
-                                }
-                              />
-                            </View>
-                          </View>
-                        );
-                      })}
-                      {myPiketToday && (
-                        <TouchableOpacity
-                          style={styles.finishBtn}
-                          onPress={() => handleFinishPiket(myPiketToday)}
-                        >
-                          <Ionicons
-                            name="camera-outline"
-                            size={14}
-                            color={Colors.bg}
-                          />
-                          <Text style={styles.finishBtnText}>
-                            SELESAIKAN PIKET
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    <Rule />
-                  </View>
-                );
-              });
-          })()}
-        </View>
-      </ScrollView>
-
-      <Modal visible={assignModal} transparent animationType="slide">
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalSheet}>
-              <View style={styles.modalHandle} />
-              <Text style={styles.modalTitle}>MINTA IZIN PIKET</Text>
               {myNextPiket && (
-                <Text style={styles.modalSub}>
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 4 }}
+                >
+                  <Icon
+                    source={SwapHoriz}
+                    tint={colors.onSurfaceVariant}
+                    size={16}
+                  />
+                  <Text
+                    style={{ typography: "bodyMedium" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    {"Giliranmu "}
+                    <Text
+                      style={{ fontWeight: "700" }}
+                      color={colors.onSurface}
+                    >
+                      {relativeDay(myNextPiket.day, todayStr)}
+                    </Text>
+                  </Text>
+                </Row>
+              )}
+            </Column>
+            <OutlinedButton onClick={() => setHistoryOpen(true)}>
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 6 }}
+              >
+                <Icon source={History} tint={colors.primary} size={18} />
+                <Text
+                  style={{ typography: "labelLarge" }}
+                  color={colors.primary}
+                >
+                  Riwayat
+                </Text>
+              </Row>
+            </OutlinedButton>
+          </Row>
+
+          {/* Hero */}
+          {myNextPiket ? (
+            <Card
+              colors={{ containerColor: colors.tertiaryContainer }}
+              modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(24))]}
+            >
+              <Column
+                verticalArrangement={{ spacedBy: 8 }}
+                modifiers={[fillMaxWidth(), paddingAll(20)]}
+              >
+                <Text
+                  style={{
+                    typography: "labelLarge",
+                    fontWeight: "bold",
+                    letterSpacing: 0.5,
+                  }}
+                  color={colors.onTertiaryContainer}
+                >
+                  {`GILIRAN KAMU · ${relativeDay(myNextPiket.day, todayStr).toUpperCase()}`}
+                </Text>
+                <Text
+                  style={{ typography: "headlineMedium", fontWeight: "bold" }}
+                  color={colors.onTertiaryContainer}
+                >
                   {new Date(myNextPiket.day).toLocaleDateString("id-ID", {
                     weekday: "long",
                     day: "numeric",
                     month: "long",
-                    year: "numeric",
+                  })}
+                </Text>
+
+                {myNextPiket.day === todayStr && (
+                  <Button
+                    enabled={!finishing}
+                    onClick={() => handleFinishPiket(myNextPiket)}
+                    modifiers={[fillMaxWidth()]}
+                  >
+                    <ButtonContent loading={finishing} label="Selesaikan" color={colors.onPrimary} />
+                  </Button>
+                )}
+
+                <FilledTonalButton onClick={() => setIzinOpen(true)}>
+                  <Text
+                    style={{ typography: "labelLarge" }}
+                    color={colors.onTertiaryContainer}
+                  >
+                    Tidak bisa piket? Minta izin
+                  </Text>
+                </FilledTonalButton>
+              </Column>
+            </Card>
+          ) : (
+            <Card
+              colors={{ containerColor: colors.surfaceContainerLow }}
+              modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(24))]}
+            >
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+                modifiers={[paddingAll(20)]}
+              >
+                Tidak ada giliran piket mendatang untukmu.
+              </Text>
+            </Card>
+          )}
+
+          {/* Permintaan masuk */}
+          {pendingRequests.length > 0 && (
+            <Column verticalArrangement={{ spacedBy: 12 }}>
+              <Text
+                style={{ typography: "titleMedium", fontWeight: "bold" }}
+                color={colors.onBackground}
+              >
+                {`Permintaan masuk · ${pendingRequests.length}`}
+              </Text>
+              {pendingRequests.map((req) => {
+                const piket = pikets.find((p) => p.id === req.piket_id);
+                const requesterName = piket?.assign_to
+                  ? firstName(users[piket.assign_to]?.fullname ?? "Seseorang")
+                  : "Seseorang";
+                return (
+                  <OutlinedCard key={req.id} modifiers={[fillMaxWidth()]}>
+                    <Row
+                      verticalAlignment="center"
+                      horizontalArrangement={{ spacedBy: 12 }}
+                      modifiers={[paddingAll(16)]}
+                    >
+                      <Box
+                        contentAlignment="center"
+                        modifiers={[
+                          size(40, 40),
+                          clip(Shapes.RoundedCorner(20)),
+                          background(colors.primaryContainer),
+                        ]}
+                      >
+                        <Text
+                          style={{
+                            typography: "titleMedium",
+                            fontWeight: "bold",
+                          }}
+                          color={colors.onPrimaryContainer}
+                        >
+                          {requesterName[0]?.toUpperCase() ?? "?"}
+                        </Text>
+                      </Box>
+                      <Column
+                        verticalArrangement={{ spacedBy: 2 }}
+                        modifiers={[weight(1)]}
+                      >
+                        <Text
+                          style={{ typography: "bodyMedium" }}
+                          color={colors.onSurface}
+                        >
+                          <Text
+                            style={{ fontWeight: "700" }}
+                            color={colors.onSurface}
+                          >
+                            {requesterName}
+                          </Text>
+                          {" minta kamu ganti piket"}
+                        </Text>
+                        {req.reason && (
+                          <Text
+                            style={{
+                              typography: "bodySmall",
+                              fontStyle: "italic",
+                            }}
+                            color={colors.onSurfaceVariant}
+                          >
+                            {`"${req.reason}"`}
+                          </Text>
+                        )}
+                      </Column>
+                      <Row horizontalArrangement={{ spacedBy: 8 }}>
+                        <IconButton
+                          shape={Shape.Circle({ radius: 1 })}
+                          colors={{
+                            containerColor: colors.primary,
+                            contentColor: colors.onPrimary,
+                          }}
+                          onClick={() => handleRespondRequest(req, true)}
+                        >
+                          <Icon
+                            source={Check}
+                            tint={colors.onPrimary}
+                            size={18}
+                          />
+                        </IconButton>
+                        <IconButton
+                          shape={Shape.Circle({ radius: 1 })}
+                          colors={{
+                            containerColor: colors.surfaceContainerHighest,
+                          }}
+                          onClick={() => handleRespondRequest(req, false)}
+                        >
+                          <Icon
+                            source={Close}
+                            tint={colors.onSurfaceVariant}
+                            size={18}
+                          />
+                        </IconButton>
+                      </Row>
+                    </Row>
+                  </OutlinedCard>
+                );
+              })}
+            </Column>
+          )}
+
+          {/* Jadwal mendatang */}
+          <Column verticalArrangement={{ spacedBy: 12 }}>
+            <Text
+              style={{ typography: "titleMedium", fontWeight: "bold" }}
+              color={colors.onBackground}
+            >
+              Jadwal mendatang
+            </Text>
+            {upcomingGroups.length === 0 && (
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                Belum ada jadwal piket mendatang.
+              </Text>
+            )}
+            {upcomingGroups.map(({ day, group }) => {
+              const isNext = day === myNextPiket?.day;
+              const dateLabel = new Date(day)
+                .toLocaleDateString("id-ID", { day: "2-digit", month: "short" })
+                .toUpperCase();
+              const names = namesLine(group);
+
+              const row = (
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 12 }}
+                  modifiers={[paddingAll(16)]}
+                >
+                  <Text
+                    style={{ typography: "labelMedium", fontWeight: "bold" }}
+                    color={isNext ? colors.primary : colors.onSurfaceVariant}
+                  >
+                    {dateLabel}
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyMedium" }}
+                    color={colors.onSurface}
+                    modifiers={[weight(1)]}
+                  >
+                    {names.map((n, i) => (
+                      <Text key={i}>
+                        {i > 0 ? " · " : ""}
+                        {n.name}
+                        {n.isMe && (
+                          <Text
+                            style={{ fontWeight: "600" }}
+                            color={colors.primary}
+                          >
+                            {" (kamu)"}
+                          </Text>
+                        )}
+                      </Text>
+                    ))}
+                  </Text>
+                  {isNext ? (
+                    <Row
+                      modifiers={[
+                        clip(Shapes.RoundedCorner(12)),
+                        background(colors.primary),
+                        padding(10, 4, 10, 4),
+                      ]}
+                    >
+                      <Text
+                        style={{ typography: "labelSmall", fontWeight: "bold" }}
+                        color={colors.onPrimary}
+                      >
+                        Giliranmu
+                      </Text>
+                    </Row>
+                  ) : (
+                    <Text
+                      style={{ typography: "labelMedium" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      Menunggu
+                    </Text>
+                  )}
+                </Row>
+              );
+
+              return isNext ? (
+                <Card
+                  key={day}
+                  colors={{ containerColor: colors.primaryContainer }}
+                  modifiers={[fillMaxWidth()]}
+                >
+                  {row}
+                </Card>
+              ) : (
+                <OutlinedCard key={day} modifiers={[fillMaxWidth()]}>
+                  {row}
+                </OutlinedCard>
+              );
+            })}
+          </Column>
+        </Column>
+      </PullToRefreshBox>
+
+      {/* Riwayat sheet */}
+      {historyOpen && (
+        <ModalBottomSheet onDismissRequest={() => setHistoryOpen(false)}>
+          <Column
+            verticalArrangement={{ spacedBy: 4 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              padding(24, 8, 24, 32),
+            ]}
+          >
+            <Text
+              style={{ typography: "headlineSmall", fontWeight: "bold" }}
+              color={colors.onSurface}
+            >
+              Riwayat piket
+            </Text>
+            <Column
+              modifiers={[padding(0, 8, 0, 0)]}
+              verticalArrangement={{ spacedBy: 4 }}
+            >
+              {pastGroups.length === 0 && (
+                <Text
+                  style={{ typography: "bodyMedium" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Belum ada riwayat piket.
+                </Text>
+              )}
+              {pastGroups.map(({ day, group }, idx) => {
+                const dateLabel = new Date(day)
+                  .toLocaleDateString("id-ID", {
+                    day: "2-digit",
+                    month: "short",
+                  })
+                  .toUpperCase();
+                const names = namesLine(group);
+                const status = group.every((p) => p.status === "done")
+                  ? "done"
+                  : (group[0]?.status ?? "pending");
+                return (
+                  <Column key={day}>
+                    <Row
+                      verticalAlignment="center"
+                      horizontalArrangement={{ spacedBy: 12 }}
+                      modifiers={[padding(0, 12, 0, 12)]}
+                    >
+                      <Text
+                        style={{
+                          typography: "labelMedium",
+                          fontWeight: "bold",
+                        }}
+                        color={colors.onSurfaceVariant}
+                      >
+                        {dateLabel}
+                      </Text>
+                      <Text
+                        style={{ typography: "bodyMedium" }}
+                        color={colors.onSurface}
+                        modifiers={[weight(1)]}
+                      >
+                        {names.map((n) => n.name).join(" · ")}
+                      </Text>
+                      <Text
+                        style={{ typography: "labelMedium" }}
+                        color={colors.onSurfaceVariant}
+                      >
+                        {STATUS_LABEL[status] ?? status}
+                      </Text>
+                    </Row>
+                    {idx < pastGroups.length - 1 && (
+                      <HorizontalDivider color={colors.outlineVariant} />
+                    )}
+                  </Column>
+                );
+              })}
+            </Column>
+          </Column>
+        </ModalBottomSheet>
+      )}
+
+      {/* Minta izin sheet */}
+      {izinOpen && (
+        <ModalBottomSheet onDismissRequest={() => setIzinOpen(false)}>
+          <Column
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              padding(24, 8, 24, 32),
+            ]}
+          >
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "headlineSmall", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Minta izin piket
+              </Text>
+              {myNextPiket && (
+                <Text
+                  style={{ typography: "bodyMedium" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  {new Date(myNextPiket.day).toLocaleDateString("id-ID", {
+                    weekday: "long",
+                    day: "numeric",
+                    month: "long",
                   })}
                 </Text>
               )}
-              <Rule style={{ marginVertical: Spacing.md }} />
-              <ScrollView>
-                <Field
-                  label="Alasan"
-                  value={reason}
-                  onChangeText={setReason}
-                  placeholder="Kenapa kamu tidak bisa piket?"
-                  multiline
-                />
-                <Text style={styles.pickLabel}>GANTI KE</Text>
-                <Rule />
-                {otherMembers.map((m) => (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={[
-                      styles.memberOption,
-                      selectedReplacementId === m.id &&
-                        styles.memberOptionSelected,
-                    ]}
-                    onPress={() => setSelectedReplacementId(m.id)}
+            </Column>
+
+            <OutlinedTextField
+              onValueChange={setReason}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Alasan</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "labelLarge", fontWeight: "bold" }}
+                color={colors.onSurfaceVariant}
+              >
+                Ganti ke
+              </Text>
+              {otherMembers.map((m) => (
+                <Row
+                  key={m.id}
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 8 }}
+                  modifiers={[
+                    clip(Shapes.RoundedCorner(12)),
+                    selectable(
+                      selectedReplacementId === m.id,
+                      () => setSelectedReplacementId(m.id),
+                      "radioButton",
+                    ),
+                    padding(4, 8, 4, 8),
+                    fillMaxWidth(),
+                  ]}
+                >
+                  <RadioButton selected={selectedReplacementId === m.id} />
+                  <Text
+                    style={{ typography: "bodyLarge" }}
+                    color={colors.onSurface}
                   >
-                    <Text
-                      style={[
-                        styles.memberOptionText,
-                        selectedReplacementId === m.id &&
-                          styles.memberOptionTextSelected,
-                      ]}
-                    >
-                      {m.fullname}
-                    </Text>
-                    {selectedReplacementId === m.id && (
-                      <Ionicons
-                        name="checkmark"
-                        size={16}
-                        color={Colors.accent}
-                      />
-                    )}
-                  </TouchableOpacity>
-                ))}
-                <Rule />
-                <View style={styles.modalActions}>
-                  <GhostButton
-                    label="BATAL"
-                    onPress={() => setAssignModal(false)}
-                  />
-                  <View style={{ width: Spacing.sm }} />
-                  <PrimaryButton
-                    label={submitting ? "MENGAJUKAN..." : "AJUKAN"}
-                    onPress={handleSubmitRequest}
-                  />
-                </View>
-              </ScrollView>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+                    {m.fullname}
+                  </Text>
+                </Row>
+              ))}
+            </Column>
+
+            <Button
+              enabled={!submitting}
+              onClick={handleSubmitIzin}
+              modifiers={[fillMaxWidth(), height(56)]}
+            >
+              <ButtonContent loading={submitting} label="Ajukan" color={colors.onPrimary} />
+            </Button>
+          </Column>
+        </ModalBottomSheet>
+      )}
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  statsRow: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-  },
-  requestCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-    backgroundColor: Colors.surface,
-    gap: Spacing.md,
-  },
-  requestInfo: { flex: 1 },
-  requestTitle: { fontSize: FontSize.base, color: Colors.text },
-  requestMeta: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
-  requestReason: {
-    fontSize: FontSize.sm,
-    color: Colors.textFaint,
-    fontStyle: "italic",
-    marginTop: 2,
-  },
-  requestBtns: { flexDirection: "row", gap: Spacing.xs },
-  respondBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  acceptBtn: { borderColor: Colors.sage },
-  declineBtn: { borderColor: Colors.danger },
-  turnNotice: {
-    marginHorizontal: Spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.borderStrong,
-    padding: Spacing.md,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: Colors.surface,
-  },
-  turnLeft: { gap: 4 },
-  turnLabel: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.accent,
-    letterSpacing: 1.5,
-  },
-  turnDate: { fontSize: FontSize.base, color: Colors.text },
-  assignBtn: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.text,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-  },
-  assignBtnText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.text,
-    letterSpacing: 1,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(28,28,30,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: 40,
-    maxHeight: "85%",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: Spacing.lg,
-  },
-  modalTitle: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.lg,
-    color: Colors.text,
-    letterSpacing: -0.5,
-  },
-  modalSub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 4 },
-  pickLabel: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 1.5,
-    marginBottom: Spacing.xs,
-  },
-  memberOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: Spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-  },
-  memberOptionSelected: { backgroundColor: Colors.surface },
-  memberOptionText: { fontSize: FontSize.base, color: Colors.text },
-  memberOptionTextSelected: { color: Colors.accent, fontFamily: "SpaceMono" },
-  modalActions: { flexDirection: "row", marginTop: Spacing.sm },
-  piketGroup: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
-  },
-  piketGroupDate: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  piketGroupRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  piketGroupName: { fontSize: FontSize.base, color: Colors.text },
-  piketGroupRight: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-  },
-  finishBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.xs,
-    backgroundColor: Colors.accent,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    alignSelf: "flex-start",
-    marginTop: Spacing.xs,
-  },
-  finishBtnText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.bg,
-    letterSpacing: 1,
-  },
-});

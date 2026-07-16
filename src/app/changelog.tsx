@@ -1,22 +1,40 @@
-import { Ionicons } from "@expo/vector-icons";
+import { changelogsApi } from "@/services/api";
+import type { Database } from "@/utils/supabase-types";
+import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import { Host } from "@expo/ui";
+import {
+  Column,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  PullToRefreshBox,
+  Row,
+  Text,
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
+import {
+  background,
+  fillMaxSize,
+  fillMaxWidth,
+  padding,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { LogRow, PageHeader, Rule, SectionHeader } from "../components/UI";
-import { Colors, FontSize, Spacing } from "../constants/theme";
-import { changelogsApi } from "../services/api";
-import type { Database } from "../utils/supabase-types";
 
 type ChangelogRow = Database["public"]["Tables"]["changelogs"]["Row"];
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default function ChangelogScreen() {
+  const colors = useMaterialColors();
   const [entries, setEntries] = useState<ChangelogRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -29,67 +47,96 @@ export default function ChangelogScreen() {
     if (data) setEntries(data);
   }
 
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await loadData();
-              setRefreshing(false);
-            }}
-            tintColor={Colors.accent}
-          />
-        }
-      >
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backBtn}
-          >
-            <Ionicons name="arrow-back" size={20} color={Colors.text} />
-          </TouchableOpacity>
-          <PageHeader title="CHANGELOG" subtitle="Riwayat pembaruan aplikasi" />
-        </View>
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData().finally(() => setRefreshing(false));
+  };
 
-        <SectionHeader label={`${entries.length} Pembaruan`} />
-        <Rule />
-        {entries.length === 0 && (
-          <Text style={styles.emptyText}>Belum ada pembaruan.</Text>
-        )}
-        {entries.map((entry) => (
-          <LogRow
-            key={entry.id}
-            date={new Date(entry.created_at).toLocaleDateString("id-ID", {
-              day: "2-digit",
-              month: "short",
-              year: "numeric",
-            })}
-            title={entry.title}
-            meta={entry.description ?? undefined}
-          />
-        ))}
-      </ScrollView>
-    </View>
+  return (
+    <Host style={{ flex: 1 }}>
+      <PullToRefreshBox
+        isRefreshing={refreshing}
+        onRefresh={onRefresh}
+        contentAlignment="topCenter"
+        modifiers={[fillMaxSize(), background(colors.background)]}
+      >
+        <Column
+          verticalArrangement={{ spacedBy: 20 }}
+          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+        >
+          {/* Header */}
+          <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 4 }} modifiers={[fillMaxWidth()]}>
+            <IconButton onClick={() => router.back()}>
+              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
+            </IconButton>
+            <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+              <Text
+                style={{ typography: "titleLarge", fontWeight: "bold" }}
+                color={colors.onBackground}
+              >
+                Changelog
+              </Text>
+              <Text
+                style={{ typography: "bodySmall" }}
+                color={colors.onSurfaceVariant}
+              >
+                Riwayat pembaruan aplikasi
+              </Text>
+            </Column>
+          </Row>
+
+          <Text
+            style={{ typography: "labelLarge", fontWeight: "bold" }}
+            color={colors.onSurfaceVariant}
+          >
+            {`${entries.length} pembaruan`}
+          </Text>
+
+          {entries.length === 0 && (
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurfaceVariant}
+            >
+              Belum ada pembaruan.
+            </Text>
+          )}
+
+          <Column>
+            {entries.map((entry, i) => (
+              <Column key={entry.id}>
+                <Column
+                  verticalArrangement={{ spacedBy: 4 }}
+                  modifiers={[padding(0, 14, 0, 14)]}
+                >
+                  <Text
+                    style={{ typography: "labelSmall", fontWeight: "bold" }}
+                    color={colors.primary}
+                  >
+                    {formatDate(entry.created_at)}
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    {entry.title}
+                  </Text>
+                  {entry.description && (
+                    <Text
+                      style={{ typography: "bodyMedium" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      {entry.description}
+                    </Text>
+                  )}
+                </Column>
+                {i < entries.length - 1 && (
+                  <HorizontalDivider color={colors.outlineVariant} />
+                )}
+              </Column>
+            ))}
+          </Column>
+        </Column>
+      </PullToRefreshBox>
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl, paddingTop: Spacing.md },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-  },
-  backBtn: { paddingLeft: Spacing.md, paddingTop: Spacing.lg },
-  emptyText: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-  },
-});

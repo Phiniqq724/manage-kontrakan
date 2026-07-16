@@ -533,6 +533,12 @@ export type Database = {
       }
     }
     Views: {
+      admin_contact: {
+        Row: {
+          contact: string | null
+        }
+        Relationships: []
+      }
       users_public: {
         Row: {
           fullname: string | null
@@ -560,6 +566,12 @@ export type Database = {
           approve_count: number
           decline_count: number
           total_votes: number
+        }[]
+      }
+      get_rule_request_voters: {
+        Args: { p_rule_request_id: string }
+        Returns: {
+          voter_id: string
         }[]
       }
       is_admin: { Args: never; Returns: boolean }
