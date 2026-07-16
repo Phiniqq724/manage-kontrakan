@@ -1,24 +1,35 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { kamarApi, usersApi } from "@/services/api";
+import type { Database } from "@/utils/supabase-types";
+import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import Person from "@expo/material-symbols/person.xml";
+import { Host } from "@expo/ui";
 import {
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
+  Box,
+  Column,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  ModalBottomSheet,
+  PullToRefreshBox,
+  Row,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+  TextButton,
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
 import {
-  GhostButton,
-  PageHeader,
-  PrimaryButton,
-  Rule,
-  SectionHeader,
-} from "../../components/UI";
-import { Colors, FontSize, Radius, Spacing } from "../../constants/theme";
-import { kamarApi, usersApi } from "../../services/api";
-import type { Database } from "../../utils/supabase-types";
+  background,
+  clickable,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  padding,
+  Shapes,
+  size,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
 
 type KamarRow = Database["public"]["Tables"]["kamar"]["Row"] & {
   users: {
@@ -31,10 +42,10 @@ type KamarRow = Database["public"]["Tables"]["kamar"]["Row"] & {
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 export default function AdminKamarScreen() {
+  const colors = useMaterialColors();
   const [rooms, setRooms] = useState<KamarRow[]>([]);
   const [members, setMembers] = useState<UserRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [modal, setModal] = useState(false);
   const [selectedRoom, setSelectedRoom] = useState<KamarRow | null>(null);
 
   useEffect(() => {
@@ -50,15 +61,15 @@ export default function AdminKamarScreen() {
     if (membersRes.data) setMembers(membersRes.data);
   }
 
-  const openAssign = (room: KamarRow) => {
-    setSelectedRoom(room);
-    setModal(true);
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData().finally(() => setRefreshing(false));
   };
 
   const handleAssign = async (userId: string | null) => {
     if (!selectedRoom) return;
     await kamarApi.assignUser(selectedRoom.id, userId);
-    setModal(false);
+    setSelectedRoom(null);
     await loadData();
   };
 
@@ -67,207 +78,233 @@ export default function AdminKamarScreen() {
   );
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await loadData();
-              setRefreshing(false);
-            }}
-            tintColor={Colors.accent}
-          />
-        }
+    <Host style={{ flex: 1 }}>
+      <PullToRefreshBox
+        isRefreshing={refreshing}
+        onRefresh={onRefresh}
+        contentAlignment="topCenter"
+        modifiers={[fillMaxSize(), background(colors.background)]}
       >
-        <PageHeader title="KAMAR" subtitle="Kelola penugasan kamar penghuni" />
-        <SectionHeader label={`${rooms.length} Kamar`} />
-        <Rule />
+        <Column
+          verticalArrangement={{ spacedBy: 16 }}
+          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+        >
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement={{ spacedBy: 4 }}
+            modifiers={[fillMaxWidth()]}
+          >
+            <IconButton onClick={() => router.back()}>
+              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
+            </IconButton>
+            <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+              <Text
+                style={{ typography: "titleLarge", fontWeight: "bold" }}
+                color={colors.onBackground}
+              >
+                Kamar
+              </Text>
+              <Text
+                style={{ typography: "bodySmall" }}
+                color={colors.onSurfaceVariant}
+              >
+                Kelola penugasan kamar penghuni
+              </Text>
+            </Column>
+          </Row>
 
-        {rooms.map((room, i) => (
-          <View key={room.id}>
-            <TouchableOpacity
-              style={styles.roomRow}
-              onPress={() => openAssign(room)}
-              activeOpacity={0.6}
-            >
-              <View style={styles.roomCode}>
-                <Text style={styles.roomCodeText}>{room.room_code}</Text>
-              </View>
-              <View style={styles.roomInfo}>
-                <Text style={styles.roomOccupant}>
-                  {room.users?.fullname ?? "Kosong"}
-                </Text>
-                <Text style={styles.roomDesc} numberOfLines={1}>
-                  {room.description ?? "-"}
-                </Text>
-              </View>
-              <Ionicons
-                name={room.user_id ? "person" : "person-outline"}
-                size={16}
-                color={room.user_id ? Colors.sage : Colors.textFaint}
-              />
-            </TouchableOpacity>
-            {i < rooms.length - 1 && <Rule />}
-          </View>
-        ))}
-      </ScrollView>
+          <Text
+            style={{ typography: "labelLarge", fontWeight: "bold" }}
+            color={colors.onSurfaceVariant}
+          >
+            {`${rooms.length} kamar`}
+          </Text>
 
-      <Modal visible={modal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>
-              KAMAR {selectedRoom?.room_code}
-            </Text>
-            <Text style={styles.modalSub}>
-              {selectedRoom?.description ?? "-"}
-            </Text>
-            <Rule style={{ marginVertical: Spacing.md }} />
+          <Column>
+            {rooms.map((room, i) => (
+              <Column key={room.id}>
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 12 }}
+                  modifiers={[
+                    fillMaxWidth(),
+                    clickable(() => setSelectedRoom(room)),
+                    padding(0, 12, 0, 12),
+                  ]}
+                >
+                  <Box
+                    contentAlignment="center"
+                    modifiers={[
+                      size(44, 44),
+                      clip(Shapes.RoundedCorner(12)),
+                      background(colors.secondaryContainer),
+                    ]}
+                  >
+                    <Text
+                      style={{ typography: "labelMedium", fontWeight: "bold" }}
+                      color={colors.onSecondaryContainer}
+                    >
+                      {room.room_code}
+                    </Text>
+                  </Box>
+                  <Column
+                    verticalArrangement={{ spacedBy: 2 }}
+                    modifiers={[weight(1)]}
+                  >
+                    <Text
+                      style={{ typography: "bodyLarge", fontWeight: "600" }}
+                      color={colors.onSurface}
+                    >
+                      {room.users?.fullname ?? "Kosong"}
+                    </Text>
+                    <Text
+                      style={{ typography: "bodySmall" }}
+                      color={colors.onSurfaceVariant}
+                      overflow="ellipsis"
+                      maxLines={1}
+                    >
+                      {room.description ?? "-"}
+                    </Text>
+                  </Column>
+                  <Icon
+                    source={Person}
+                    tint={room.user_id ? colors.primary : colors.onSurfaceVariant}
+                    size={18}
+                  />
+                </Row>
+                {i < rooms.length - 1 && (
+                  <HorizontalDivider color={colors.outlineVariant} />
+                )}
+              </Column>
+            ))}
+          </Column>
+        </Column>
+      </PullToRefreshBox>
 
-            {selectedRoom?.user_id && (
+      {selectedRoom && (
+        <ModalBottomSheet onDismissRequest={() => setSelectedRoom(null)}>
+          <Column
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              padding(24, 8, 24, 32),
+            ]}
+          >
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "headlineSmall", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                {`Kamar ${selectedRoom.room_code}`}
+              </Text>
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                {selectedRoom.description ?? "-"}
+              </Text>
+            </Column>
+
+            {selectedRoom.user_id && (
               <>
-                <Text style={styles.sectionLabel}>PENGHUNI SAAT INI</Text>
-                <View style={styles.currentOccupant}>
-                  <Text style={styles.currentOccupantName}>
-                    {selectedRoom.users?.fullname}
+                <HorizontalDivider color={colors.outlineVariant} />
+                <Column verticalArrangement={{ spacedBy: 8 }}>
+                  <Text
+                    style={{ typography: "labelLarge", fontWeight: "bold" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    Penghuni saat ini
                   </Text>
-                  <TouchableOpacity onPress={() => handleAssign(null)}>
-                    <Text style={styles.unassignText}>Lepas</Text>
-                  </TouchableOpacity>
-                </View>
-                <Rule style={{ marginVertical: Spacing.md }} />
+                  <Row
+                    verticalAlignment="center"
+                    horizontalArrangement="spaceBetween"
+                    modifiers={[fillMaxWidth()]}
+                  >
+                    <Text
+                      style={{ typography: "bodyLarge" }}
+                      color={colors.onSurface}
+                    >
+                      {selectedRoom.users?.fullname}
+                    </Text>
+                    <TextButton onClick={() => handleAssign(null)}>
+                      <Text
+                        style={{ typography: "labelLarge" }}
+                        color={colors.error}
+                      >
+                        Lepas
+                      </Text>
+                    </TextButton>
+                  </Row>
+                </Column>
               </>
             )}
 
-            <Text style={styles.sectionLabel}>
-              {selectedRoom?.user_id ? "PINDAHKAN KE" : "TUGASKAN KE"}
-            </Text>
-            <ScrollView style={{ maxHeight: 240 }}>
-              {unassignedMembers.length === 0 ? (
-                <Text style={styles.emptyText}>
-                  Semua penghuni sudah punya kamar.
-                </Text>
-              ) : (
-                unassignedMembers.map((m) => (
-                  <TouchableOpacity
-                    key={m.id}
-                    style={styles.memberOption}
-                    onPress={() => handleAssign(m.id)}
-                    activeOpacity={0.6}
-                  >
-                    <Text style={styles.memberOptionName}>{m.fullname}</Text>
-                    <Text style={styles.memberOptionSub}>{m.username}</Text>
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
+            <HorizontalDivider color={colors.outlineVariant} />
 
-            <View style={styles.modalActions}>
-              <GhostButton label="BATAL" onPress={() => setModal(false)} />
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+            <Text
+              style={{ typography: "labelLarge", fontWeight: "bold" }}
+              color={colors.onSurfaceVariant}
+            >
+              {selectedRoom.user_id ? "Pindahkan ke" : "Tugaskan ke"}
+            </Text>
+
+            {unassignedMembers.length === 0 ? (
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                Semua penghuni sudah punya kamar.
+              </Text>
+            ) : (
+              <Column>
+                {unassignedMembers.map((m, i) => (
+                  <Column key={m.id}>
+                    <Row
+                      verticalAlignment="center"
+                      modifiers={[
+                        fillMaxWidth(),
+                        clickable(() => handleAssign(m.id)),
+                        padding(0, 12, 0, 12),
+                      ]}
+                    >
+                      <Column verticalArrangement={{ spacedBy: 2 }}>
+                        <Text
+                          style={{ typography: "bodyLarge" }}
+                          color={colors.onSurface}
+                        >
+                          {m.fullname}
+                        </Text>
+                        <Text
+                          style={{ typography: "bodySmall" }}
+                          color={colors.onSurfaceVariant}
+                        >
+                          {m.username}
+                        </Text>
+                      </Column>
+                    </Row>
+                    {i < unassignedMembers.length - 1 && (
+                      <HorizontalDivider color={colors.outlineVariant} />
+                    )}
+                  </Column>
+                ))}
+              </Column>
+            )}
+
+            <TextButton
+              onClick={() => setSelectedRoom(null)}
+              modifiers={[fillMaxWidth()]}
+            >
+              <Text
+                style={{ typography: "labelLarge" }}
+                color={colors.onSurfaceVariant}
+              >
+                Batal
+              </Text>
+            </TextButton>
+          </Column>
+        </ModalBottomSheet>
+      )}
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  roomRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    gap: Spacing.md,
-  },
-  roomCode: {
-    width: 44,
-    height: 44,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  roomCodeText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.sm,
-    color: Colors.accent,
-    letterSpacing: 1,
-  },
-  roomInfo: { flex: 1 },
-  roomOccupant: { fontSize: FontSize.base, color: Colors.text },
-  roomDesc: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(28,28,30,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: 40,
-    maxHeight: "80%",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: Spacing.lg,
-  },
-  modalTitle: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.lg,
-    color: Colors.text,
-    letterSpacing: -0.5,
-  },
-  modalSub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 4 },
-  sectionLabel: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-    marginBottom: Spacing.sm,
-  },
-  currentOccupant: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: Spacing.sm,
-  },
-  currentOccupantName: { fontSize: FontSize.base, color: Colors.text },
-  unassignText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.danger,
-    letterSpacing: 1,
-  },
-  memberOption: {
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: Colors.border,
-  },
-  memberOptionName: { fontSize: FontSize.base, color: Colors.text },
-  memberOptionSub: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  emptyText: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    paddingVertical: Spacing.md,
-  },
-  modalActions: { marginTop: Spacing.lg },
-});

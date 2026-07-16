@@ -1,125 +1,175 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import AccountBalanceWallet from "@expo/material-symbols/account_balance_wallet.xml";
+import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import Campaign from "@expo/material-symbols/campaign.xml";
+import ChevronRight from "@expo/material-symbols/chevron_right.xml";
+import Description from "@expo/material-symbols/description.xml";
+import Flag from "@expo/material-symbols/flag.xml";
+import Home from "@expo/material-symbols/home.xml";
+import PersonAdd from "@expo/material-symbols/person_add.xml";
+import { Host } from "@expo/ui";
+import {
+  Box,
+  Column,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  Row,
+  Text,
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
+import {
+  background,
+  clickable,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  padding,
+  Shapes,
+  size,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
 import { router } from "expo-router";
-import { PageHeader, Rule } from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
+import type { ImageSourcePropType } from "react-native";
 
-const MENU = [
+const MENU: {
+  label: string;
+  sub: string;
+  icon: ImageSourcePropType;
+  route: string;
+}[] = [
   {
     label: "Konfirmasi Pembayaran",
     sub: "Terima atau tolak bukti transfer",
-    icon: "wallet-outline" as const,
+    icon: AccountBalanceWallet,
     route: "/admin/payments",
   },
   {
     label: "Approve Peraturan",
     sub: "Tinjau usulan peraturan baru",
-    icon: "document-text-outline" as const,
+    icon: Description,
     route: "/admin/rules",
   },
   {
     label: "Laporan Penghuni",
     sub: "Lihat semua laporan yang masuk",
-    icon: "flag-outline" as const,
+    icon: Flag,
     route: "/admin/reports",
   },
   {
     label: "Tambah Penghuni",
     sub: "Daftarkan anggota kontrakan baru",
-    icon: "person-add-outline" as const,
+    icon: PersonAdd,
     route: "/admin/members",
-  },
-  {
-    label: "Password Manager",
-    sub: "Reset password penghuni ke default",
-    icon: "key-outline" as const,
-    route: "/admin/passwords",
   },
   {
     label: "Kelola Kamar",
     sub: "Tugaskan penghuni ke kamar masing-masing",
-    icon: "home-outline" as const,
+    icon: Home,
     route: "/admin/kamar",
   },
   {
     label: "Kelola Changelog",
     sub: "Tambah pembaruan dan notifikasi semua penghuni",
-    icon: "megaphone-outline" as const,
+    icon: Campaign,
     route: "/admin/changelog",
   },
 ];
 
 export default function AdminIndex() {
+  const colors = useMaterialColors();
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <PageHeader title="ADMIN" subtitle="Panel administrasi kontrakan" />
-
-      {MENU.map((item, i) => (
-        <View key={i}>
-          <TouchableOpacity
-            style={styles.menuRow}
-            onPress={() => router.push(item.route as any)}
-            activeOpacity={0.6}
-          >
-            <View style={styles.menuIcon}>
-              <Ionicons name={item.icon} size={20} color={Colors.accent} />
-            </View>
-            <View style={styles.menuInfo}>
-              <Text style={styles.menuLabel}>{item.label}</Text>
-              <Text style={styles.menuSub}>{item.sub}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-          </TouchableOpacity>
-          <Rule />
-        </View>
-      ))}
-
-      <View style={{ paddingHorizontal: Spacing.md, marginTop: Spacing.lg }}>
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-          activeOpacity={0.6}
+    <Host style={{ flex: 1 }}>
+      <Column
+        verticalArrangement={{ spacedBy: 20 }}
+        modifiers={[
+          fillMaxSize(),
+          background(colors.background),
+          verticalScroll(),
+          padding(16, 56, 16, 32),
+        ]}
+      >
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: 4 }}
+          modifiers={[fillMaxWidth()]}
         >
-          <Ionicons name="arrow-back" size={16} color={Colors.textMuted} />
-          <Text style={styles.backBtnText}>KEMBALI KE APP</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          <IconButton onClick={() => router.back()}>
+            <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
+          </IconButton>
+          <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+            <Text
+              style={{ typography: "titleLarge", fontWeight: "bold" }}
+              color={colors.onBackground}
+            >
+              Panel admin
+            </Text>
+            <Text
+              style={{ typography: "bodySmall" }}
+              color={colors.onSurfaceVariant}
+            >
+              Administrasi kontrakan
+            </Text>
+          </Column>
+        </Row>
+
+        <Column>
+          {MENU.map((item, i) => (
+            <Column key={item.route}>
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 12 }}
+                modifiers={[
+                  fillMaxWidth(),
+                  clickable(() => router.push(item.route as any)),
+                  padding(0, 14, 0, 14),
+                ]}
+              >
+                <Box
+                  contentAlignment="center"
+                  modifiers={[
+                    size(40, 40),
+                    clip(Shapes.RoundedCorner(20)),
+                    background(colors.secondaryContainer),
+                  ]}
+                >
+                  <Icon
+                    source={item.icon}
+                    tint={colors.onSecondaryContainer}
+                    size={20}
+                  />
+                </Box>
+                <Column
+                  verticalArrangement={{ spacedBy: 2 }}
+                  modifiers={[weight(1)]}
+                >
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    {item.label}
+                  </Text>
+                  <Text
+                    style={{ typography: "bodySmall" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    {item.sub}
+                  </Text>
+                </Column>
+                <Icon
+                  source={ChevronRight}
+                  tint={colors.onSurfaceVariant}
+                  size={18}
+                />
+              </Row>
+              {i < MENU.length - 1 && (
+                <HorizontalDivider color={colors.outlineVariant} />
+              )}
+            </Column>
+          ))}
+        </Column>
+      </Column>
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  menuRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    gap: Spacing.md,
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  menuInfo: { flex: 1 },
-  menuLabel: { fontSize: FontSize.base, color: Colors.text },
-  menuSub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
-  backBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-  },
-  backBtnText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-  },
-});

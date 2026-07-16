@@ -1,3 +1,4 @@
+import { getMaterialColors, useMaterialColors } from "@expo/ui/jetpack-compose";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -5,21 +6,34 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { Colors } from "../constants/theme";
+import * as SystemUI from "expo-system-ui";
+import { LoadingScreen } from "../components/LoadingScreen";
 import { AuthProvider } from "../utils/auth-context";
 import { registerRuleVoteCategory } from "../utils/notifications";
 import { handleRuleVoteNotificationResponse } from "../utils/rule-requests";
 
 SplashScreen.preventAutoHideAsync();
 
+// Set the native root view background before first paint so the Android
+// predictive-back preview and screen transitions don't flash the default
+// white window background behind our Material You-colored screens.
+SystemUI.setBackgroundColorAsync(getMaterialColors().background);
+
 export default function RootLayout() {
+  const colors = useMaterialColors();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
+    // Hand off from the native splash to our own <LoadingScreen /> as soon
+    // as this first frame has committed, instead of waiting on fonts.
+    SplashScreen.hideAsync();
+  }, []);
+
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(colors.background);
+  }, [colors.background]);
 
   useEffect(() => {
     registerRuleVoteCategory();
@@ -36,26 +50,27 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  if (!loaded) return null;
+  if (!loaded) return <LoadingScreen />;
 
   return (
     <KeyboardProvider>
-    <AuthProvider>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: Colors.bg },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="auth/login" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="admin" />
-        <Stack.Screen name="payments" />
-        <Stack.Screen name="changelog" />
-      </Stack>
-    </AuthProvider>
+      <AuthProvider>
+        <StatusBar style="auto" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: "slide_from_right",
+            freezeOnBlur: true,
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="auth/login" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="admin" />
+          <Stack.Screen name="changelog" />
+        </Stack>
+      </AuthProvider>
     </KeyboardProvider>
   );
 }

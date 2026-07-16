@@ -1,48 +1,56 @@
 {
   "expo": {
-    "name": "Naungi",
+    "name": "Semanggi",
     "slug": "manage-kontrakan",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/naungi-logo-new.png",
+    "icon": "./assets/images/semanggi-icon.png",
     "scheme": "managekontrakan",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.sandy.managekontrakan"
     },
     "android": {
+      "backgroundColor": "#F7F5F0",
       "adaptiveIcon": {
         "backgroundColor": "#F7F5F0",
-        "foregroundImage": "./assets/images/naungi-icon-foreground-new.png",
-        "backgroundImage": "./assets/images/naungi-background-new.png",
-        "monochromeImage": "./assets/images/naungi-icon-mono-new.png"
+        "foregroundImage": "./assets/images/semanggi-icon-foreground.png",
+        "monochromeImage": "./assets/images/semanggi-icon-mono.png"
       },
       "softwareKeyboardLayoutMode": "resize",
-      "predictiveBackGestureEnabled": false,
+      "predictiveBackGestureEnabled": true,
       "package": "com.sandy.managekontrakan",
       "googleServicesFile": "./google-services.json",
-      "permissions": [
-        "android.permission.RECORD_AUDIO",
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": true,
+          "hidden": false,
+          "style": "dark"
+        }
+      ],
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#EDEAE3",
+          "backgroundColor": "#F7F5F0",
           "android": {
-            "image": "./assets/images/naungi-splash-neww.png",
-            "imageWidth": 76
+            "image": "./assets/images/semanggi-icon-foreground.png",
+            "imageWidth": 256,
+            "imageHeight": 256
           }
         }
       ],
       "expo-sqlite",
+      "expo-system-ui",
       "@react-native-community/datetimepicker",
       [
         "expo-image-picker",
@@ -53,10 +61,11 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon-naungi.png",
+          "icon": "./assets/images/semanggi-icon-notification.png",
           "androidMode": "default"
         }
-      ]
+      ],
+      "./plugins/withAndroidMonochromeVector.js"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -66,6 +75,11 @@
       "router": {},
       "eas": {
         "projectId": "968c2fca-1d0f-4f42-a469-09502a4405b8"
+      },
+      "expo-navigation-bar": {
+        "enforceContrast": true,
+        "style": "dark",
+        "hidden": false
       }
     },
     "owner": "mustpikeks-2",

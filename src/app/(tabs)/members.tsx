@@ -1,46 +1,64 @@
-import { useEffect, useState } from "react";
+import { Avatar, avatarColorFor } from "@/components/Avatar";
+import { ButtonContent } from "@/components/ButtonContent";
+import { kamarApi, reportsApi, usersApi } from "@/services/api";
+import { useAuth } from "@/utils/auth-context";
+import { getAdminToken, sendPushNotification } from "@/utils/notifications";
+import type { Database } from "@/utils/supabase-types";
+import { pickAndUploadImage } from "@/utils/upload";
+import Chat from "@expo/material-symbols/chat.xml";
+import Flag from "@expo/material-symbols/flag.xml";
+import Search from "@expo/material-symbols/search.xml";
+import { Host } from "@expo/ui";
 import {
-  Image,
-  Linking,
-  Modal,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
+  Button,
+  Card,
+  Column,
+  DockedSearchBar,
+  Icon,
+  IconButton,
+  ModalBottomSheet,
+  OutlinedButton,
+  OutlinedTextField,
+  PullToRefreshBox,
+  Row,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { Ionicons } from "@expo/vector-icons";
+  TextButton,
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
 import {
-  Field,
-  GhostButton,
-  PageHeader,
-  PrimaryButton,
-  Rule,
-  SectionHeader,
-} from "../../components/UI";
-import { Colors, FontSize, Radius, Spacing } from "../../constants/theme";
-import { kamarApi, reportsApi, usersApi } from "../../services/api";
-import { useAuth } from "../../utils/auth-context";
-import { getAdminToken, sendPushNotification } from "../../utils/notifications";
-import { pickAndUploadImage } from "../../utils/upload";
-import type { Database } from "../../utils/supabase-types";
+  background,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  padding,
+  paddingAll,
+  Shapes,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { useEffect, useState } from "react";
+import { Linking } from "react-native";
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 type KamarRow = Database["public"]["Tables"]["kamar"]["Row"];
 
-function truncateDesc(text: string | null): string {
-  if (!text) return "-";
-  return text.length <= 45 ? text : text.slice(0, 45) + "...";
+function kamarLabel(k: KamarRow | undefined) {
+  if (!k) return null;
+  return k.description
+    ? `Kamar ${k.room_code} · ${k.description}`
+    : `Kamar ${k.room_code}`;
 }
 
 export default function MembersScreen() {
   const { user: currentUser } = useAuth();
+  const colors = useMaterialColors();
+
   const [members, setMembers] = useState<UserRow[]>([]);
   const [kamarMap, setKamarMap] = useState<Record<string, KamarRow>>({});
   const [refreshing, setRefreshing] = useState(false);
-  const [reportModal, setReportModal] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const [reportOpen, setReportOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<UserRow | null>(null);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
@@ -66,17 +84,25 @@ export default function MembersScreen() {
     }
   }
 
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData().finally(() => setRefreshing(false));
+  };
+
   const openReport = (member: UserRow) => {
     setSelectedMember(member);
     setTitle("");
     setDesc("");
     setEvidenceUri(null);
-    setReportModal(true);
+    setReportOpen(true);
   };
 
   const handlePickEvidence = async () => {
     try {
-      const url = await pickAndUploadImage("report-evidence", currentUser?.id ?? "anon");
+      const url = await pickAndUploadImage(
+        "report-evidence",
+        currentUser?.id ?? "anon",
+      );
       if (url) setEvidenceUri(url);
     } catch (err: any) {
       alert(err.message);
@@ -99,7 +125,7 @@ export default function MembersScreen() {
         docs: evidenceUri,
       });
       if (error) throw error;
-      setReportModal(false);
+      setReportOpen(false);
       const adminToken = await getAdminToken();
       if (adminToken) {
         await sendPushNotification(
@@ -115,229 +141,254 @@ export default function MembersScreen() {
     }
   };
 
-  const initials = (name: string) =>
-    name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const filteredMembers = members
+    .filter((m) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      const kamar = kamarMap[m.id];
+      return (
+        m.fullname.toLowerCase().includes(q) ||
+        kamar?.room_code.toLowerCase().includes(q) ||
+        kamar?.description?.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => {
+      if (a.id === currentUser?.id) return -1;
+      if (b.id === currentUser?.id) return 1;
+      return a.fullname.localeCompare(b.fullname);
+    });
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={async () => {
-                setRefreshing(true);
-                await loadData();
-                setRefreshing(false);
-              }}
-              tintColor={Colors.accent}
-            />
-          }
+    <Host style={{ flex: 1 }}>
+      <PullToRefreshBox
+        isRefreshing={refreshing}
+        onRefresh={onRefresh}
+        contentAlignment="topCenter"
+        modifiers={[fillMaxSize(), background(colors.background)]}
+      >
+        <Column
+          verticalArrangement={{ spacedBy: 16 }}
+          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
         >
-        <PageHeader title="PENGHUNI" subtitle="Kontak dan info kamar" topInset={60} />
+          <Text
+            style={{ typography: "headlineMedium", fontWeight: "bold" }}
+            color={colors.onBackground}
+          >
+            Penghuni
+          </Text>
 
+          <DockedSearchBar
+            onQueryChange={setQuery}
+            modifiers={[fillMaxWidth()]}
+          >
+            <DockedSearchBar.Placeholder>
+              <Text>Cari penghuni</Text>
+            </DockedSearchBar.Placeholder>
+            <DockedSearchBar.LeadingIcon>
+              <Icon source={Search} tint={colors.onSurfaceVariant} size={20} />
+            </DockedSearchBar.LeadingIcon>
+          </DockedSearchBar>
 
-        <SectionHeader label={`${members.length} Penghuni`} />
-        <Rule />
+          <Column verticalArrangement={{ spacedBy: 12 }}>
+            {filteredMembers.length === 0 && (
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                Tidak ada penghuni yang cocok.
+              </Text>
+            )}
+            {filteredMembers.map((m) => {
+              const isSelf = m.id === currentUser?.id;
+              const room = kamarLabel(kamarMap[m.id]);
 
-        {members.map((m, i) => (
-          <View key={m.id}>
-            <View style={styles.memberRow}>
-              {m.avatar_url ? (
-                <Image source={{ uri: m.avatar_url }} style={styles.avatarImg} />
-              ) : (
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initials(m.fullname)}</Text>
-                </View>
-              )}
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>{m.fullname}</Text>
-                <Text style={styles.memberSub}>{m.username} · {m.role}</Text>
-                {kamarMap[m.id] && (
-                  <Text style={styles.memberRoom}>
-                    {kamarMap[m.id].room_code} · {truncateDesc(kamarMap[m.id].description)}
-                  </Text>
-                )}
-              </View>
-              <View style={styles.memberActions}>
-                {m.contact && (
-                  <>
-                    <TouchableOpacity
-                      style={styles.iconBtn}
-                      onPress={() => Linking.openURL(`tel:${m.contact}`)}
-                    >
-                      <Ionicons name="call-outline" size={18} color={Colors.sage} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.iconBtn}
-                      onPress={() =>
-                        Linking.openURL(`https://wa.me/62${m.contact!.slice(1)}`)
-                      }
-                    >
-                      <Ionicons name="logo-whatsapp" size={18} color={Colors.sage} />
-                    </TouchableOpacity>
-                  </>
-                )}
-                {currentUser?.id !== m.id && m.role !== "admin" && (
-                  <TouchableOpacity
-                    style={styles.iconBtn}
-                    onPress={() => openReport(m)}
+              return (
+                <Card
+                  key={m.id}
+                  colors={{ containerColor: colors.surfaceContainerLow }}
+                  modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(18))]}
+                >
+                  <Row
+                    verticalAlignment="center"
+                    horizontalArrangement={{ spacedBy: 12 }}
+                    modifiers={[paddingAll(16)]}
                   >
-                    <Ionicons name="flag-outline" size={18} color={Colors.danger} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-            {i < members.length - 1 && <Rule />}
-          </View>
-        ))}
-      </ScrollView>
+                    <Avatar
+                      fullname={m.fullname}
+                      avatarUrl={m.avatar_url}
+                      diameter={44}
+                      colors={avatarColorFor(m.id, colors)}
+                    />
+                    <Column
+                      verticalArrangement={{ spacedBy: 2 }}
+                      modifiers={[weight(1)]}
+                    >
+                      <Row
+                        verticalAlignment="center"
+                        horizontalArrangement={{ spacedBy: 8 }}
+                      >
+                        <Text
+                          style={{
+                            typography: "bodyLarge",
+                            fontWeight: "bold",
+                          }}
+                          color={colors.onSurface}
+                        >
+                          {m.fullname}
+                        </Text>
+                        {isSelf && (
+                          <Row
+                            modifiers={[
+                              clip(Shapes.RoundedCorner(8)),
+                              background(colors.primaryContainer),
+                              padding(8, 2, 8, 2),
+                            ]}
+                          >
+                            <Text
+                              style={{
+                                typography: "labelSmall",
+                                fontWeight: "bold",
+                              }}
+                              color={colors.onPrimaryContainer}
+                            >
+                              kamu
+                            </Text>
+                          </Row>
+                        )}
+                      </Row>
+                      <Text
+                        style={{ typography: "bodySmall" }}
+                        color={colors.onSurfaceVariant}
+                      >
+                        {room ?? "Belum ada kamar"}
+                      </Text>
+                    </Column>
 
-      <Modal visible={reportModal} transparent animationType="slide">
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>LAPORKAN PENGHUNI</Text>
-            <Text style={styles.modalSub}>{selectedMember?.fullname}</Text>
-            <Rule style={{ marginVertical: Spacing.md }} />
-            <ScrollView>
-              <Field
-                label="Judul Laporan"
-                value={title}
-                onChangeText={setTitle}
-                placeholder="Singkat dan jelas"
-              />
-              <Field
-                label="Deskripsi"
-                value={desc}
-                onChangeText={setDesc}
-                placeholder="Jelaskan kejadiannya..."
-                multiline
-                numberOfLines={4}
-              />
-              <TouchableOpacity style={styles.evidenceBtn} onPress={handlePickEvidence}>
-                <Ionicons
-                  name={evidenceUri ? "checkmark-circle" : "attach-outline"}
-                  size={18}
-                  color={evidenceUri ? Colors.sage : Colors.textMuted}
-                />
-                <Text style={[styles.evidenceBtnText, evidenceUri && { color: Colors.sage }]}>
-                  {evidenceUri ? "Bukti terlampir" : "Lampirkan Bukti (Opsional)"}
+                    {isSelf ? (
+                      m.contact && <></>
+                    ) : (
+                      <Row horizontalArrangement={{ spacedBy: 8 }}>
+                        {m.contact && (
+                          <IconButton
+                            onClick={() =>
+                              Linking.openURL(
+                                `https://wa.me/62${m.contact!.slice(1)}`,
+                              )
+                            }
+                          >
+                            <Icon
+                              source={Chat}
+                              tint={colors.onSurfaceVariant}
+                              size={20}
+                            />
+                          </IconButton>
+                        )}
+                        {m.role !== "admin" && (
+                          <IconButton onClick={() => openReport(m)}>
+                            <Icon source={Flag} tint={colors.error} size={20} />
+                          </IconButton>
+                        )}
+                      </Row>
+                    )}
+                  </Row>
+                </Card>
+              );
+            })}
+          </Column>
+        </Column>
+      </PullToRefreshBox>
+
+      {reportOpen && (
+        <ModalBottomSheet onDismissRequest={() => setReportOpen(false)}>
+          <Column
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              padding(24, 8, 24, 32),
+            ]}
+          >
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "headlineSmall", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Laporkan penghuni
+              </Text>
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                {selectedMember?.fullname}
+              </Text>
+            </Column>
+
+            <OutlinedTextField
+              singleLine
+              onValueChange={setTitle}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Judul laporan</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <OutlinedTextField
+              onValueChange={setDesc}
+              minLines={3}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Deskripsi</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <OutlinedButton
+              onClick={handlePickEvidence}
+              modifiers={[fillMaxWidth()]}
+            >
+              <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+                {evidenceUri ? "Bukti terlampir" : "Lampirkan bukti (opsional)"}
+              </Text>
+            </OutlinedButton>
+
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 12 }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <TextButton
+                onClick={() => setReportOpen(false)}
+                modifiers={[weight(1)]}
+              >
+                <Text
+                  style={{ typography: "labelLarge" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Batal
                 </Text>
-              </TouchableOpacity>
-              <View style={styles.modalActions}>
-                <GhostButton label="BATAL" onPress={() => setReportModal(false)} />
-                <View style={{ width: Spacing.sm }} />
-                <PrimaryButton
-                  label={submitting ? "MENGIRIM..." : "KIRIM LAPORAN"}
-                  onPress={handleSubmitReport}
-                  danger
+              </TextButton>
+              <Button
+                enabled={!submitting}
+                onClick={handleSubmitReport}
+                colors={{
+                  containerColor: colors.error,
+                  contentColor: colors.onError,
+                }}
+                modifiers={[weight(1)]}
+              >
+                <ButtonContent
+                  loading={submitting}
+                  label="Kirim laporan"
+                  color={colors.onError}
                 />
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
+              </Button>
+            </Row>
+          </Column>
+        </ModalBottomSheet>
+      )}
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  memberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-    gap: Spacing.md,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.sm,
-    color: Colors.accent,
-  },
-  avatarImg: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-  },
-  memberInfo: { flex: 1 },
-  memberName: { fontSize: FontSize.base, color: Colors.text },
-  memberSub: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 2 },
-  memberRoom: { fontSize: FontSize.xs, color: Colors.textFaint, marginTop: 2, fontFamily: "SpaceMono" },
-  memberActions: { flexDirection: "row", gap: Spacing.xs },
-  iconBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    borderRadius: Radius.sm,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(28,28,30,0.4)",
-    justifyContent: "flex-end",
-  },
-  modalSheet: {
-    backgroundColor: Colors.bg,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: 40,
-    maxHeight: "85%",
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: Colors.border,
-  },
-  modalHandle: {
-    width: 40,
-    height: 4,
-    backgroundColor: Colors.border,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: Spacing.lg,
-  },
-  modalTitle: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.lg,
-    color: Colors.text,
-    letterSpacing: -0.5,
-  },
-  modalSub: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    marginTop: 4,
-  },
-  evidenceBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    marginBottom: Spacing.lg,
-  },
-  evidenceBtnText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    letterSpacing: 1,
-  },
-  modalActions: { flexDirection: "row", marginTop: Spacing.sm },
-});

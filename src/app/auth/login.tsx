@@ -1,16 +1,45 @@
+import { ButtonContent } from "@/components/ButtonContent";
+import { SemanggiIcon } from "@/components/SemanggiIcon";
 import { signIn } from "@/utils/auth";
-import { router } from "expo-router";
-import { useState } from "react";
+import { supabase } from "@/utils/supabase";
+import { Host } from "@expo/ui";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
+  Box,
+  Button,
+  Checkbox,
+  Column,
+  LinearWavyProgressIndicator,
+  ModalBottomSheet,
+  OutlinedTextField,
+  RNHostView,
+  Row,
   Text,
-  View,
-} from "react-native";
-import { Field, PrimaryButton, Rule } from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
+import {
+  background,
+  clickable,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  height,
+  imePadding,
+  padding,
+  Shapes,
+  size,
+  toggleable,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
+import { Linking } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+/** Converts a local ("08...") phone number into the international format wa.me expects. */
+function toWhatsAppNumber(contact: string): string {
+  return contact.replace(/^0/, "62");
+}
 
 function friendlyError(msg: string): string {
   const m = msg.toLowerCase();
@@ -25,10 +54,29 @@ function friendlyError(msg: string): string {
 }
 
 export default function LoginScreen() {
+  const insets = useSafeAreaInsets();
+  const colors = useMaterialColors();
+
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [adminContact, setAdminContact] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("admin_contact")
+      .select("contact")
+      .single()
+      .then(({ data }) => setAdminContact(data?.contact ?? null));
+  }, []);
+
+  const contactAdmin = () => {
+    if (!adminContact) return;
+    Linking.openURL(`https://wa.me/${toWhatsAppNumber(adminContact)}`);
+  };
 
   const handleLogin = async () => {
     setError(null);
@@ -44,110 +92,203 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
+    <Host style={{ flex: 1 }}>
+      <Column
+        horizontalAlignment="center"
+        modifiers={[
+          fillMaxSize(),
+          background(colors.background),
+          padding(24, insets.top + 32, 24, insets.bottom + 24),
+        ]}
       >
-        {/* Logotype */}
-        <View style={styles.header}>
-          <Text style={styles.wordmark}>NAUNGI.</Text>
-          <Rule style={styles.wordmarkRule} />
-          <Text style={styles.tagline}>Rumah bersama, tertib bersama.</Text>
-        </View>
+        {/* Hero */}
+        <Column
+          horizontalAlignment="center"
+          verticalArrangement={{ spacedBy: 12 }}
+          modifiers={[fillMaxWidth(), weight(1)]}
+        >
+          <Box
+            contentAlignment="center"
+            modifiers={[
+              size(72, 72),
+              clip(Shapes.RoundedCorner(20)),
+              background(colors.primaryContainer),
+            ]}
+          >
+            <RNHostView>
+              <SemanggiIcon size={72} color={colors.onPrimaryContainer} />
+            </RNHostView>
+          </Box>
+          <Text
+            style={{
+              typography: "headlineMedium",
+              fontWeight: "bold",
+              textAlign: "center",
+            }}
+            color={colors.onBackground}
+          >
+            Semanggi
+          </Text>
+          <Text
+            style={{ typography: "bodyMedium", textAlign: "center" }}
+            color={colors.onSurfaceVariant}
+          >
+            Rumah bersama, tertib bersama.
+          </Text>
+        </Column>
 
-        {/* Form */}
-        <View style={styles.form}>
-          <Field
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            placeholder="email@kamu.com"
-          />
-          <Field
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            placeholder="••••••••"
-          />
-          {error && <Text style={styles.errorText}>{error}</Text>}
-          <View style={styles.actions}>
-            <PrimaryButton
-              label={loading ? "MASUK..." : "MASUK"}
-              onPress={handleLogin}
-            />
-          </View>
-        </View>
+        {/* CTA */}
+        <Column
+          verticalArrangement={{ spacedBy: 16 }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <Button
+            onClick={() => setSheetOpen(true)}
+            modifiers={[fillMaxWidth(), height(56)]}
+          >
+            <Text
+              style={{ typography: "labelLarge", fontWeight: "bold" }}
+              color={colors.onPrimary}
+            >
+              Masuk ke Semanggi
+            </Text>
+          </Button>
+          <Row
+            horizontalArrangement="center"
+            verticalAlignment="center"
+            modifiers={[fillMaxWidth()]}
+          >
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurfaceVariant}
+            >
+              {"Belum punya akun? "}
+            </Text>
+            <Text
+              color={colors.primary}
+              style={{ typography: "bodyMedium", fontWeight: "700" }}
+              modifiers={[clickable(contactAdmin)]}
+            >
+              Hubungi admin
+            </Text>
+          </Row>
+          <LinearWavyProgressIndicator modifiers={[fillMaxWidth()]} />
+        </Column>
+      </Column>
 
-        {/* Footer stamp */}
-        <View style={styles.footer}>
-          <Rule />
-          <Text style={styles.footerText}>NAUNGI. 2026</Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {sheetOpen && (
+        <ModalBottomSheet onDismissRequest={() => setSheetOpen(false)}>
+          <Column
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[
+              fillMaxWidth(),
+              verticalScroll(),
+              imePadding(),
+              padding(24, 8, 24, insets.bottom + 24),
+            ]}
+          >
+            <Column verticalArrangement={{ spacedBy: 4 }}>
+              <Text
+                style={{ typography: "headlineSmall", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Masuk
+              </Text>
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                Selamat datang kembali di Semanggi.
+              </Text>
+            </Column>
+
+            <OutlinedTextField
+              singleLine
+              autoFocus
+              enabled={!loading}
+              onValueChange={setEmail}
+              keyboardOptions={{
+                keyboardType: "email",
+                capitalization: "none",
+                imeAction: "next",
+              }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Email</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <Column verticalArrangement={{ spacedBy: 6 }}>
+              <OutlinedTextField
+                singleLine
+                enabled={!loading}
+                onValueChange={setPassword}
+                visualTransformation={showPassword ? "none" : "password"}
+                keyboardOptions={{
+                  keyboardType: "password",
+                  imeAction: "done",
+                }}
+                keyboardActions={{ onDone: () => handleLogin() }}
+                modifiers={[fillMaxWidth()]}
+              >
+                <OutlinedTextField.Label>
+                  <Text>Password</Text>
+                </OutlinedTextField.Label>
+              </OutlinedTextField>
+
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[fillMaxWidth()]}
+              >
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 8 }}
+                  modifiers={[
+                    toggleable(showPassword, () => setShowPassword((v) => !v), {
+                      role: "checkbox",
+                    }),
+                  ]}
+                >
+                  <Checkbox value={showPassword} />
+                  <Text
+                    style={{ typography: "bodyMedium" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    Tampilkan password
+                  </Text>
+                </Row>
+
+                <Text
+                  style={{ typography: "labelLarge", fontWeight: "600" }}
+                  color={colors.primary}
+                >
+                  Lupa password?
+                </Text>
+              </Row>
+            </Column>
+
+            {error && (
+              <Text style={{ typography: "bodySmall" }} color={colors.error}>
+                {error}
+              </Text>
+            )}
+
+            <Button
+              enabled={!loading}
+              onClick={handleLogin}
+              modifiers={[fillMaxWidth(), height(56)]}
+            >
+              <ButtonContent
+                loading={loading}
+                label="Masuk"
+                color={colors.onPrimary}
+              />
+            </Button>
+          </Column>
+        </ModalBottomSheet>
+      )}
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.bg,
-  },
-  scroll: {
-    flexGrow: 1,
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.lg,
-    paddingTop: 80,
-    paddingBottom: Spacing.xl,
-  },
-  header: {
-    marginBottom: Spacing.xxl,
-  },
-  wordmark: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.display,
-    color: Colors.text,
-    letterSpacing: -1,
-  },
-  wordmarkRule: {
-    marginVertical: Spacing.sm,
-    backgroundColor: Colors.text,
-    height: 2,
-  },
-  tagline: {
-    fontSize: FontSize.base,
-    color: Colors.textMuted,
-    marginTop: Spacing.xs,
-  },
-  form: {
-    flex: 1,
-    justifyContent: "center",
-  },
-  errorText: {
-    fontSize: FontSize.sm,
-    color: Colors.danger,
-    marginTop: Spacing.sm,
-  },
-  actions: {
-    marginTop: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  footer: {
-    marginTop: Spacing.xl,
-    gap: Spacing.md,
-  },
-  footerText: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.textFaint,
-    letterSpacing: 2,
-    textAlign: "center",
-  },
-});

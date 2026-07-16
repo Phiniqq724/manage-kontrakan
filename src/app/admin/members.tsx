@@ -1,111 +1,142 @@
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import Info from "@expo/material-symbols/info.xml";
+import { Host } from "@expo/ui";
+import {
+  Column,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  Row,
+  Text,
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
+import {
+  background,
+  clip,
+  fillMaxSize,
+  fillMaxWidth,
+  padding,
+  paddingAll,
+  Shapes,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
 import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { PageHeader, Rule } from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
+
+const STEPS = [
+  {
+    num: "01",
+    title: "Buat akun di Supabase",
+    desc: "Buka Supabase dashboard → Authentication → Users → Add user. Masukkan email dan password sementara untuk penghuni baru.",
+  },
+  {
+    num: "02",
+    title: "Tambahkan data profil",
+    desc: "Setelah akun dibuat, buka tabel public.users di Supabase → Insert row. Isi kolom id (salin dari auth.users), fullname, username, email, password, contact, dan role.",
+  },
+  {
+    num: "03",
+    title: "Penghuni bisa langsung login",
+    desc: "Setelah kedua langkah di atas selesai, penghuni bisa login menggunakan email dan password yang sudah diatur.",
+  },
+];
 
 export default function AdminMembersScreen() {
+  const colors = useMaterialColors();
+
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={20} color={Colors.text} />
-          </TouchableOpacity>
-          <PageHeader title="TAMBAH PENGHUNI" subtitle="Panduan daftarkan anggota baru" />
-        </View>
-
-        <Rule />
-
-        <View style={styles.step}>
-          <Text style={styles.stepNum}>01</Text>
-          <View style={styles.stepBody}>
-            <Text style={styles.stepTitle}>Buat akun di Supabase</Text>
-            <Text style={styles.stepDesc}>
-              Buka Supabase dashboard → Authentication → Users → Add user. Masukkan email dan password sementara untuk penghuni baru.
+    <Host style={{ flex: 1 }}>
+      <Column
+        verticalArrangement={{ spacedBy: 16 }}
+        modifiers={[
+          fillMaxSize(),
+          background(colors.background),
+          verticalScroll(),
+          padding(16, 56, 16, 32),
+        ]}
+      >
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: 4 }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <IconButton onClick={() => router.back()}>
+            <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
+          </IconButton>
+          <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+            <Text
+              style={{ typography: "titleLarge", fontWeight: "bold" }}
+              color={colors.onBackground}
+            >
+              Tambah penghuni
             </Text>
-          </View>
-        </View>
-
-        <Rule />
-
-        <View style={styles.step}>
-          <Text style={styles.stepNum}>02</Text>
-          <View style={styles.stepBody}>
-            <Text style={styles.stepTitle}>Tambahkan data profil</Text>
-            <Text style={styles.stepDesc}>
-              Setelah akun dibuat, buka tabel <Text style={styles.mono}>public.users</Text> di Supabase → Insert row. Isi kolom id (salin dari auth.users), fullname, username, email, password, contact, dan role.
+            <Text
+              style={{ typography: "bodySmall" }}
+              color={colors.onSurfaceVariant}
+            >
+              Panduan daftarkan anggota baru
             </Text>
-          </View>
-        </View>
+          </Column>
+        </Row>
 
-        <Rule />
+        <Column>
+          {STEPS.map((step, i) => (
+            <Column key={step.num}>
+              <Row
+                horizontalArrangement={{ spacedBy: 16 }}
+                modifiers={[fillMaxWidth(), padding(0, 14, 0, 14)]}
+              >
+                <Text
+                  style={{ typography: "titleMedium", fontWeight: "bold" }}
+                  color={colors.primary}
+                >
+                  {step.num}
+                </Text>
+                <Column
+                  verticalArrangement={{ spacedBy: 4 }}
+                  modifiers={[weight(1)]}
+                >
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    {step.title}
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyMedium" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    {step.desc}
+                  </Text>
+                </Column>
+              </Row>
+              {i < STEPS.length - 1 && (
+                <HorizontalDivider color={colors.outlineVariant} />
+              )}
+            </Column>
+          ))}
+        </Column>
 
-        <View style={styles.step}>
-          <Text style={styles.stepNum}>03</Text>
-          <View style={styles.stepBody}>
-            <Text style={styles.stepTitle}>Penghuni bisa langsung login</Text>
-            <Text style={styles.stepDesc}>
-              Setelah kedua langkah di atas selesai, penghuni bisa login menggunakan email dan password yang sudah diatur.
-            </Text>
-          </View>
-        </View>
-
-        <Rule />
-
-        <View style={styles.note}>
-          <Ionicons name="information-circle-outline" size={16} color={Colors.textMuted} />
-          <Text style={styles.noteText}>
-            Proses ini dilakukan manual di Supabase dashboard untuk menjaga keamanan — password tidak pernah diproses lewat aplikasi.
+        <Row
+          horizontalArrangement={{ spacedBy: 12 }}
+          modifiers={[
+            fillMaxWidth(),
+            clip(Shapes.RoundedCorner(16)),
+            background(colors.secondaryContainer),
+            paddingAll(16),
+          ]}
+        >
+          <Icon source={Info} tint={colors.onSecondaryContainer} size={18} />
+          <Text
+            style={{ typography: "bodySmall" }}
+            color={colors.onSecondaryContainer}
+            modifiers={[weight(1)]}
+          >
+            Proses ini dilakukan manual di Supabase dashboard untuk menjaga
+            keamanan — password tidak pernah diproses lewat aplikasi.
           </Text>
-        </View>
-      </ScrollView>
-    </View>
+        </Row>
+      </Column>
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  backBtn: { paddingLeft: Spacing.md, paddingTop: Spacing.lg },
-  step: {
-    flexDirection: "row",
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.lg,
-  },
-  stepNum: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.lg,
-    color: Colors.accent,
-    width: 32,
-  },
-  stepBody: { flex: 1, gap: Spacing.xs },
-  stepTitle: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.base,
-    color: Colors.text,
-  },
-  stepDesc: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    lineHeight: 20,
-  },
-  mono: {
-    fontFamily: "SpaceMono",
-    fontSize: FontSize.xs,
-    color: Colors.accent,
-  },
-  note: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: Spacing.sm,
-    margin: Spacing.md,
-    padding: Spacing.md,
-    backgroundColor: Colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Colors.border,
-  },
-  noteText: { flex: 1, fontSize: FontSize.sm, color: Colors.textMuted, lineHeight: 18 },
-});

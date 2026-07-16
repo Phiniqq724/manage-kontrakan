@@ -1,33 +1,51 @@
-import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { ButtonContent } from "@/components/ButtonContent";
+import { changelogsApi } from "@/services/api";
+import { useAuth } from "@/utils/auth-context";
+import { getAllTokensExcept, sendPushNotification } from "@/utils/notifications";
+import type { Database } from "@/utils/supabase-types";
+import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import { Host } from "@expo/ui";
+import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
+  Button,
+  Column,
+  HorizontalDivider,
+  Icon,
+  IconButton,
+  OutlinedTextField,
+  PullToRefreshBox,
+  Row,
   Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+  useMaterialColors,
+} from "@expo/ui/jetpack-compose";
 import {
-  Field,
-  LogRow,
-  PageHeader,
-  PrimaryButton,
-  Rule,
-  SectionHeader,
-} from "../../components/UI";
-import { Colors, FontSize, Spacing } from "../../constants/theme";
-import { changelogsApi } from "../../services/api";
-import { useAuth } from "../../utils/auth-context";
-import { getAllTokensExcept, sendPushNotification } from "../../utils/notifications";
-import type { Database } from "../../utils/supabase-types";
+  background,
+  fillMaxSize,
+  fillMaxWidth,
+  imePadding,
+  padding,
+  verticalScroll,
+  weight,
+} from "@expo/ui/jetpack-compose/modifiers";
+import { router } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 
 type ChangelogRow = Database["public"]["Tables"]["changelogs"]["Row"];
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export default function AdminChangelogScreen() {
   const { user } = useAuth();
+  const colors = useMaterialColors();
+  const titleRef = useRef<TextFieldRef>(null);
+  const descRef = useRef<TextFieldRef>(null);
+
   const [entries, setEntries] = useState<ChangelogRow[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -42,6 +60,11 @@ export default function AdminChangelogScreen() {
     const { data } = await changelogsApi.getAll();
     if (data) setEntries(data);
   }
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData().finally(() => setRefreshing(false));
+  };
 
   async function handleSubmit() {
     if (!title.trim()) {
@@ -59,6 +82,8 @@ export default function AdminChangelogScreen() {
       if (error) throw error;
       setTitle("");
       setDescription("");
+      titleRef.current?.clear().catch(() => {});
+      descRef.current?.clear().catch(() => {});
       loadData();
 
       if (entry) {
@@ -77,84 +102,136 @@ export default function AdminChangelogScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={async () => {
-              setRefreshing(true);
-              await loadData();
-              setRefreshing(false);
-            }}
-            tintColor={Colors.accent}
-          />
-        }
+    <Host style={{ flex: 1 }}>
+      <PullToRefreshBox
+        isRefreshing={refreshing}
+        onRefresh={onRefresh}
+        contentAlignment="topCenter"
+        modifiers={[fillMaxSize(), background(colors.background)]}
       >
-        <KeyboardAvoidingView behavior="padding">
-          <View style={styles.headerRow}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <Ionicons name="arrow-back" size={20} color={Colors.text} />
-            </TouchableOpacity>
-            <PageHeader title="CHANGELOG" subtitle="Tambah pembaruan aplikasi" />
-          </View>
+        <Column
+          verticalArrangement={{ spacedBy: 20 }}
+          modifiers={[
+            fillMaxSize(),
+            verticalScroll(),
+            imePadding(),
+            padding(16, 56, 16, 32),
+          ]}
+        >
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement={{ spacedBy: 4 }}
+            modifiers={[fillMaxWidth()]}
+          >
+            <IconButton onClick={() => router.back()}>
+              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
+            </IconButton>
+            <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+              <Text
+                style={{ typography: "titleLarge", fontWeight: "bold" }}
+                color={colors.onBackground}
+              >
+                Changelog
+              </Text>
+              <Text
+                style={{ typography: "bodySmall" }}
+                color={colors.onSurfaceVariant}
+              >
+                Tambah pembaruan aplikasi
+              </Text>
+            </Column>
+          </Row>
 
-          <View style={{ paddingHorizontal: Spacing.md }}>
-            <Field
-              label="Judul"
-              value={title}
-              onChangeText={setTitle}
-              placeholder="Misal: Fitur voting peraturan"
-            />
-            <Field
-              label="Deskripsi"
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Jelaskan perubahannya (opsional)"
-              multiline
-              numberOfLines={3}
-            />
-            <PrimaryButton
-              label={submitting ? "MENGIRIM..." : "TAMBAH & NOTIF SEMUA"}
-              onPress={handleSubmit}
-            />
-          </View>
-        </KeyboardAvoidingView>
+          <Column verticalArrangement={{ spacedBy: 12 }}>
+            <OutlinedTextField
+              ref={titleRef}
+              singleLine
+              onValueChange={setTitle}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Judul</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
 
-        <View style={{ marginTop: Spacing.lg }}>
-          <SectionHeader label={`${entries.length} Pembaruan`} />
-          <Rule />
+            <OutlinedTextField
+              ref={descRef}
+              onValueChange={setDescription}
+              minLines={3}
+              keyboardOptions={{ capitalization: "sentences" }}
+              modifiers={[fillMaxWidth()]}
+            >
+              <OutlinedTextField.Label>
+                <Text>Deskripsi (opsional)</Text>
+              </OutlinedTextField.Label>
+            </OutlinedTextField>
+
+            <Button
+              enabled={!submitting}
+              onClick={handleSubmit}
+              modifiers={[fillMaxWidth()]}
+            >
+              <ButtonContent
+                loading={submitting}
+                label="Tambah & notif semua"
+                color={colors.onPrimary}
+              />
+            </Button>
+          </Column>
+
+          <Text
+            style={{ typography: "labelLarge", fontWeight: "bold" }}
+            color={colors.onSurfaceVariant}
+          >
+            {`${entries.length} pembaruan`}
+          </Text>
+
           {entries.length === 0 && (
-            <Text style={styles.emptyText}>Belum ada pembaruan.</Text>
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurfaceVariant}
+            >
+              Belum ada pembaruan.
+            </Text>
           )}
-          {entries.map((entry) => (
-            <LogRow
-              key={entry.id}
-              date={new Date(entry.created_at).toLocaleDateString("id-ID", {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-              })}
-              title={entry.title}
-              meta={entry.description ?? undefined}
-            />
-          ))}
-        </View>
-      </ScrollView>
-    </View>
+
+          <Column>
+            {entries.map((entry, i) => (
+              <Column key={entry.id}>
+                <Column
+                  verticalArrangement={{ spacedBy: 4 }}
+                  modifiers={[padding(0, 14, 0, 14)]}
+                >
+                  <Text
+                    style={{ typography: "labelSmall", fontWeight: "bold" }}
+                    color={colors.primary}
+                  >
+                    {formatDate(entry.created_at)}
+                  </Text>
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    {entry.title}
+                  </Text>
+                  {entry.description && (
+                    <Text
+                      style={{ typography: "bodyMedium" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      {entry.description}
+                    </Text>
+                  )}
+                </Column>
+                {i < entries.length - 1 && (
+                  <HorizontalDivider color={colors.outlineVariant} />
+                )}
+              </Column>
+            ))}
+          </Column>
+        </Column>
+      </PullToRefreshBox>
+    </Host>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.bg },
-  content: { paddingBottom: Spacing.xl },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: Spacing.sm },
-  backBtn: { paddingLeft: Spacing.md, paddingTop: Spacing.lg },
-  emptyText: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.md,
-  },
-});
