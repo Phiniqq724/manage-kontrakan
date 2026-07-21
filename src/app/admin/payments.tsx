@@ -127,8 +127,8 @@ export default function AdminPaymentsScreen() {
       const now = new Date();
       const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(DUE_DAY).padStart(2, "0")}`;
-      const nonAdminUsers = Object.values(users).filter(
-        (u) => u.role !== "admin",
+      const billableUsers = Object.values(users).filter(
+        (u) => u.role !== "admin" && u.role !== "sup-member",
       );
       const existing = await paymentsApi.getAll();
       const existingPeriods = new Set(
@@ -138,7 +138,7 @@ export default function AdminPaymentsScreen() {
       );
 
       let created = 0;
-      for (const u of nonAdminUsers) {
+      for (const u of billableUsers) {
         if (!existingPeriods.has(u.id)) {
           const { error: createError } = await paymentsApi.create({
             paid_by: u.id,

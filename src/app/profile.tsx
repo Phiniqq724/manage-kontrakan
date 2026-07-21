@@ -1,5 +1,11 @@
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
+import { AddAccountSheet } from "@/components/LinkedAccountSheet";
+import {
+  PaymentMethodFormSheet,
+  PaymentMethodsListSheet,
+  type PaymentMethodRow,
+} from "@/components/PaymentMethodSheets";
 import {
   formatPaymentPeriod,
   isPayable,
@@ -9,9 +15,18 @@ import {
   PaymentsListSheet,
   type PaymentRow,
 } from "@/components/PaymentsSheets";
-import { kamarApi, paymentsApi, usersApi } from "@/services/api";
-import { signOut } from "@/utils/auth";
+import {
+  kamarApi,
+  linkedAccountsApi,
+  paymentsApi,
+  usersApi,
+} from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
+import {
+  smartSignOut,
+  switchToLinkedAccount,
+  unlinkAccount,
+} from "@/utils/multi-session";
 import { seedTextField } from "@/utils/seed-text-field";
 import { supabase } from "@/utils/supabase";
 import type { Database } from "@/utils/supabase-types";
@@ -21,9 +36,12 @@ import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import ChevronRight from "@expo/material-symbols/chevron_right.xml";
 import Close from "@expo/material-symbols/close.xml";
 import Edit from "@expo/material-symbols/edit.xml";
+import LinkOff from "@expo/material-symbols/link_off.xml";
 import Logout from "@expo/material-symbols/logout.xml";
+import PersonAdd from "@expo/material-symbols/person_add.xml";
 import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import PhotoLibrary from "@expo/material-symbols/photo_library.xml";
+import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
 import { Host } from "@expo/ui";
 import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
@@ -84,6 +102,16 @@ export default function ProfileScreen() {
   const [tagihanSheetOpen, setTagihanSheetOpen] = useState(false);
   const [detailPayment, setDetailPayment] = useState<PaymentRow | null>(null);
   const [payFormPayment, setPayFormPayment] = useState<PaymentRow | null>(null);
+  const [paymentMethodsSheetOpen, setPaymentMethodsSheetOpen] = useState(false);
+  const [paymentMethodFormOpen, setPaymentMethodFormOpen] = useState(false);
+  const [editingPaymentMethod, setEditingPaymentMethod] =
+    useState<PaymentMethodRow | null>(null);
+  const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false);
+  const [linkedAccount, setLinkedAccount] = useState<{
+    id: string;
+    partnerName: string;
+  } | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   useEffect(() => {
     if (user?.id) loadData();
@@ -91,14 +119,29 @@ export default function ProfileScreen() {
 
   async function loadData() {
     if (!user) return;
-    const [payRes, kamarRes] = await Promise.all([
+    const [payRes, kamarRes, linkRes] = await Promise.all([
       paymentsApi.getByUser(user.id),
       kamarApi.getByUser(user.id),
+      linkedAccountsApi.getForUser(user.id),
     ]);
     if (payRes.data) {
       setPayments(payRes.data.sort((a, b) => b.period.localeCompare(a.period)));
     }
     setKamar(kamarRes.data ?? null);
+
+    if (linkRes.data) {
+      const partnerId =
+        linkRes.data.owner_id === user.id
+          ? linkRes.data.linked_user_id
+          : linkRes.data.owner_id;
+      const { data: partner } = await usersApi.getById(partnerId);
+      setLinkedAccount({
+        id: linkRes.data.id,
+        partnerName: partner?.fullname ?? "Akun tertaut",
+      });
+    } else {
+      setLinkedAccount(null);
+    }
   }
 
   const closeAllPaymentSheets = () => {
@@ -113,8 +156,38 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    await signOut();
-    router.replace("/auth/login");
+    if (!user) return;
+    const switchedToFallback = await smartSignOut(user.id);
+    router.replace(
+      switchedToFallback ? ("/(tabs)/dashboard" as any) : "/auth/login",
+    );
+  };
+
+  const handleSwitchAccount = async () => {
+    if (!user) return;
+    setSwitching(true);
+    try {
+      await switchToLinkedAccount({
+        id: user.id,
+        fullname: user.fullname,
+        email: user.email,
+      });
+      router.replace("/(tabs)/dashboard" as any);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const handleUnlinkAccount = async () => {
+    if (!linkedAccount) return;
+    try {
+      await unlinkAccount(linkedAccount.id);
+      setLinkedAccount(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   if (!user) return null;
@@ -234,7 +307,42 @@ export default function ProfileScreen() {
               size={20}
             />
           </Row>
-
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement="spaceBetween"
+            modifiers={[
+              fillMaxWidth(),
+              clip(Shapes.RoundedCorner(18)),
+              background(colors.surfaceContainerLow),
+              clickable(() => setPaymentMethodsSheetOpen(true)),
+              paddingAll(16),
+            ]}
+          >
+            <Column
+              verticalArrangement={{ spacedBy: 2 }}
+              modifiers={[weight(1)]}
+            >
+              <Text
+                style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Payment Method
+              </Text>
+              <Text
+                style={{ typography: "bodySmall" }}
+                color={colors.onSurfaceVariant}
+                overflow="ellipsis"
+                maxLines={1}
+              >
+                Personalize your payment method
+              </Text>
+            </Column>
+            <Icon
+              source={ChevronRight}
+              tint={colors.onSurfaceVariant}
+              size={20}
+            />
+          </Row>
           {user.role === "admin" && (
             <Row
               verticalAlignment="center"
@@ -269,6 +377,86 @@ export default function ProfileScreen() {
                 size={20}
               />
             </Row>
+          )}
+
+          {linkedAccount ? (
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement="spaceBetween"
+              modifiers={[
+                fillMaxWidth(),
+                clip(Shapes.RoundedCorner(18)),
+                background(colors.surfaceContainerLow),
+                clickable(handleSwitchAccount),
+                paddingAll(16),
+              ]}
+            >
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 12 }}
+                modifiers={[weight(1)]}
+              >
+                {switching ? (
+                  <ButtonContent
+                    loading
+                    enabled={false}
+                    label=""
+                    color={colors.onSurfaceVariant}
+                  />
+                ) : (
+                  <Icon
+                    source={SwapHoriz}
+                    tint={colors.onSurfaceVariant}
+                    size={22}
+                  />
+                )}
+                <Text
+                  style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                  color={colors.onSurface}
+                >
+                  {`Beralih ke ${linkedAccount.partnerName}`}
+                </Text>
+              </Row>
+              <IconButton onClick={handleUnlinkAccount}>
+                <Icon source={LinkOff} tint={colors.error} size={20} />
+              </IconButton>
+            </Row>
+          ) : (
+            user.role === "sup-member" && (
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[
+                  fillMaxWidth(),
+                  clip(Shapes.RoundedCorner(18)),
+                  background(colors.surfaceContainerLow),
+                  clickable(() => setAddAccountSheetOpen(true)),
+                  paddingAll(16),
+                ]}
+              >
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 12 }}
+                >
+                  <Icon
+                    source={PersonAdd}
+                    tint={colors.onSurfaceVariant}
+                    size={22}
+                  />
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                    color={colors.onSurface}
+                  >
+                    Tambah akun
+                  </Text>
+                </Row>
+                <Icon
+                  source={ChevronRight}
+                  tint={colors.onSurfaceVariant}
+                  size={20}
+                />
+              </Row>
+            )
           )}
 
           <OutlinedButton onClick={handleLogout} modifiers={[fillMaxWidth()]}>
@@ -356,6 +544,50 @@ export default function ProfileScreen() {
           onSubmitted={() => {
             loadData();
             closeAllPaymentSheets();
+          }}
+        />
+      )}
+
+      {paymentMethodsSheetOpen && (
+        <PaymentMethodsListSheet
+          userId={user.id}
+          onClose={() => setPaymentMethodsSheetOpen(false)}
+          onAdd={() => {
+            setPaymentMethodsSheetOpen(false);
+            setEditingPaymentMethod(null);
+            setPaymentMethodFormOpen(true);
+          }}
+          onEdit={(method) => {
+            setPaymentMethodsSheetOpen(false);
+            setEditingPaymentMethod(method);
+            setPaymentMethodFormOpen(true);
+          }}
+        />
+      )}
+
+      {paymentMethodFormOpen && (
+        <PaymentMethodFormSheet
+          userId={user.id}
+          userFullname={user.fullname}
+          method={editingPaymentMethod}
+          onClose={() => {
+            setPaymentMethodFormOpen(false);
+            setPaymentMethodsSheetOpen(true);
+          }}
+          onSaved={() => {
+            setPaymentMethodFormOpen(false);
+            setPaymentMethodsSheetOpen(true);
+          }}
+        />
+      )}
+
+      {addAccountSheetOpen && (
+        <AddAccountSheet
+          ownerId={user.id}
+          onClose={() => setAddAccountSheetOpen(false)}
+          onLinked={() => {
+            setAddAccountSheetOpen(false);
+            loadData();
           }}
         />
       )}
@@ -630,7 +862,11 @@ function EditProfileSheet({
           onClick={handleSaveProfile}
           modifiers={[fillMaxWidth()]}
         >
-          <ButtonContent loading={saving} label="Simpan profil" color={colors.onPrimary} />
+          <ButtonContent
+            loading={saving}
+            label="Simpan profil"
+            color={colors.onPrimary}
+          />
         </Button>
 
         <HorizontalDivider color={colors.outlineVariant} />
@@ -726,7 +962,11 @@ function ChangePasswordSheet({
           onClick={handleChangePassword}
           modifiers={[fillMaxWidth()]}
         >
-          <ButtonContent loading={changingPw} label="Ubah password" color={colors.onPrimary} />
+          <ButtonContent
+            loading={changingPw}
+            label="Ubah password"
+            color={colors.onPrimary}
+          />
         </Button>
       </Column>
     </ModalBottomSheet>
@@ -822,7 +1062,11 @@ function EditKamarSheet({
             onClick={handleSave}
             modifiers={[weight(1)]}
           >
-            <ButtonContent loading={saving} label="Simpan" color={colors.onPrimary} />
+            <ButtonContent
+              loading={saving}
+              label="Simpan"
+              color={colors.onPrimary}
+            />
           </Button>
         </Row>
       </Column>

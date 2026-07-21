@@ -140,6 +140,107 @@ export type Database = {
           },
         ]
       }
+      linked_accounts: {
+        Row: {
+          created_at: string
+          id: string
+          linked_user_id: string
+          owner_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          linked_user_id: string
+          owner_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          linked_user_id?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linked_accounts_linked_user_id_fkey"
+            columns: ["linked_user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linked_accounts_linked_user_id_fkey"
+            columns: ["linked_user_id"]
+            isOneToOne: true
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linked_accounts_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "linked_accounts_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: true
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_methods: {
+        Row: {
+          account_holder: string | null
+          account_number: string | null
+          created_at: string
+          id: string
+          modified_at: string
+          provider_name: string
+          qris_image_url: string | null
+          type: string
+          user_id: string
+        }
+        Insert: {
+          account_holder?: string | null
+          account_number?: string | null
+          created_at?: string
+          id?: string
+          modified_at?: string
+          provider_name: string
+          qris_image_url?: string | null
+          type: string
+          user_id: string
+        }
+        Update: {
+          account_holder?: string | null
+          account_number?: string | null
+          created_at?: string
+          id?: string
+          modified_at?: string
+          provider_name?: string
+          qris_image_url?: string | null
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_methods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_methods_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number | null
@@ -288,6 +389,48 @@ export type Database = {
           {
             foreignKeyName: "pikets_assign_to_fkey"
             columns: ["assign_to"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receipts: {
+        Row: {
+          amount: number
+          category: string
+          created_at: string
+          created_by: string | null
+          docs: string
+          id: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          docs: string
+          id?: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          docs?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receipts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receipts_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users_public"
             referencedColumns: ["id"]
@@ -489,6 +632,161 @@ export type Database = {
           },
         ]
       }
+      split_bill_participants: {
+        Row: {
+          amount_due: number
+          created_at: string
+          id: string
+          modified_at: string
+          paid_at: string | null
+          payment_method_id: string | null
+          payment_status: string
+          proof_of_payment_url: string | null
+          split_bill_id: string
+          user_id: string
+        }
+        Insert: {
+          amount_due: number
+          created_at?: string
+          id?: string
+          modified_at?: string
+          paid_at?: string | null
+          payment_method_id?: string | null
+          payment_status?: string
+          proof_of_payment_url?: string | null
+          split_bill_id: string
+          user_id: string
+        }
+        Update: {
+          amount_due?: number
+          created_at?: string
+          id?: string
+          modified_at?: string
+          paid_at?: string | null
+          payment_method_id?: string | null
+          payment_status?: string
+          proof_of_payment_url?: string | null
+          split_bill_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "split_bill_participants_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "split_bill_participants_split_bill_id_fkey"
+            columns: ["split_bill_id"]
+            isOneToOne: false
+            referencedRelation: "split_bills"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "split_bill_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "split_bill_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      split_bill_payment_methods: {
+        Row: {
+          created_at: string
+          id: string
+          payment_method_id: string
+          split_bill_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          payment_method_id: string
+          split_bill_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          payment_method_id?: string
+          split_bill_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "split_bill_payment_methods_payment_method_id_fkey"
+            columns: ["payment_method_id"]
+            isOneToOne: false
+            referencedRelation: "payment_methods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "split_bill_payment_methods_split_bill_id_fkey"
+            columns: ["split_bill_id"]
+            isOneToOne: false
+            referencedRelation: "split_bills"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      split_bills: {
+        Row: {
+          created_at: string
+          creator_id: string
+          id: string
+          modified_at: string
+          split_type: string
+          subtotal: number
+          tax_percentage: number
+          title: string
+          total_amount: number
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          id?: string
+          modified_at?: string
+          split_type?: string
+          subtotal: number
+          tax_percentage?: number
+          title: string
+          total_amount: number
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          id?: string
+          modified_at?: string
+          split_type?: string
+          subtotal?: number
+          tax_percentage?: number
+          title?: string
+          total_amount?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "split_bills_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "split_bills_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           avatar_url: string | null
@@ -575,6 +873,7 @@ export type Database = {
         }[]
       }
       is_admin: { Args: never; Returns: boolean }
+      is_sup_member: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

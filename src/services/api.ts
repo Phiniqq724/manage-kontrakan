@@ -198,3 +198,113 @@ export const reportsApi = {
   delete: async (id: string) =>
     await supabase.from("reports").delete().eq("id", id),
 };
+
+// PAYMENT METHODS API
+export const paymentMethodsApi = {
+  getAll: async () => await supabase.from("payment_methods").select("*"),
+  getById: async (id: string) =>
+    await supabase.from("payment_methods").select("*").eq("id", id).single(),
+  getByUser: async (userId: string) =>
+    await supabase
+      .from("payment_methods")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at"),
+  create: async (data: InsertTables<"payment_methods">) =>
+    await supabase.from("payment_methods").insert(data).select().single(),
+  update: async (id: string, data: UpdateTables<"payment_methods">) =>
+    await supabase
+      .from("payment_methods")
+      .update(data)
+      .eq("id", id)
+      .select()
+      .single(),
+  delete: async (id: string) =>
+    await supabase.from("payment_methods").delete().eq("id", id),
+};
+
+// SPLIT BILLS API
+export const splitBillsApi = {
+  getAll: async () =>
+    await supabase
+      .from("split_bills")
+      .select(
+        "*, split_bill_participants(*), split_bill_payment_methods(*, payment_methods(*))",
+      )
+      .order("created_at", { ascending: false }),
+  getById: async (id: string) =>
+    await supabase
+      .from("split_bills")
+      .select(
+        "*, split_bill_participants(*), split_bill_payment_methods(*, payment_methods(*))",
+      )
+      .eq("id", id)
+      .single(),
+  create: async (data: InsertTables<"split_bills">) =>
+    await supabase.from("split_bills").insert(data).select().single(),
+  update: async (id: string, data: UpdateTables<"split_bills">) =>
+    await supabase
+      .from("split_bills")
+      .update(data)
+      .eq("id", id)
+      .select()
+      .single(),
+  delete: async (id: string) =>
+    await supabase.from("split_bills").delete().eq("id", id),
+};
+
+// SPLIT BILL PARTICIPANTS API
+export const splitBillParticipantsApi = {
+  getByBill: async (splitBillId: string) =>
+    await supabase
+      .from("split_bill_participants")
+      .select("*")
+      .eq("split_bill_id", splitBillId),
+  createMany: async (data: InsertTables<"split_bill_participants">[]) =>
+    await supabase.from("split_bill_participants").insert(data).select(),
+  update: async (id: string, data: UpdateTables<"split_bill_participants">) =>
+    await supabase
+      .from("split_bill_participants")
+      .update(data)
+      .eq("id", id)
+      .select()
+      .single(),
+};
+
+// SPLIT BILL PAYMENT METHODS API
+export const splitBillPaymentMethodsApi = {
+  getByBill: async (splitBillId: string) =>
+    await supabase
+      .from("split_bill_payment_methods")
+      .select("*, payment_methods(*)")
+      .eq("split_bill_id", splitBillId),
+  createMany: async (data: InsertTables<"split_bill_payment_methods">[]) =>
+    await supabase.from("split_bill_payment_methods").insert(data).select(),
+};
+
+// LINKED ACCOUNTS API
+export const linkedAccountsApi = {
+  getForUser: async (userId: string) =>
+    await supabase
+      .from("linked_accounts")
+      .select("*")
+      .or(`owner_id.eq.${userId},linked_user_id.eq.${userId}`)
+      .maybeSingle(),
+  create: async (data: InsertTables<"linked_accounts">) =>
+    await supabase.from("linked_accounts").insert(data).select().single(),
+  delete: async (id: string) =>
+    await supabase.from("linked_accounts").delete().eq("id", id),
+};
+
+// RECEIPTS API
+export const receiptsApi = {
+  getAll: async () =>
+    await supabase
+      .from("receipts")
+      .select("*")
+      .order("created_at", { ascending: false }),
+  create: async (data: InsertTables<"receipts">) =>
+    await supabase.from("receipts").insert(data).select().single(),
+  delete: async (id: string) =>
+    await supabase.from("receipts").delete().eq("id", id),
+};

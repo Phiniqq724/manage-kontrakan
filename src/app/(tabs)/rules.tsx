@@ -6,6 +6,7 @@ import {
   usersApi,
 } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
+import { cooldownRemaining, formatCooldown } from "@/utils/cooldown";
 import {
   getVoterTokensExcept,
   sendPushNotification,
@@ -13,6 +14,7 @@ import {
 import { castVoteAndMaybeResolve } from "@/utils/rule-requests";
 import type { Database } from "@/utils/supabase-types";
 import Add from "@expo/material-symbols/add.xml";
+import NotificationsActive from "@expo/material-symbols/notifications_active.xml";
 import PriorityHigh from "@expo/material-symbols/priority_high.xml";
 import { Host } from "@expo/ui";
 import {
@@ -133,15 +135,26 @@ export default function RulesScreen() {
   const [eligibleVoterCount, setEligibleVoterCount] = useState(0);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [remindedAt, setRemindedAt] = useState<Record<string, number>>({});
+  const [remindingId, setRemindingId] = useState<string | null>(null);
+  const [, tick] = useState(0);
 
   const [proposeOpen, setProposeOpen] = useState(false);
   const [ruleText, setRuleText] = useState("");
   const [priority, setPriority] = useState<Priority>("medium");
   const [submitting, setSubmitting] = useState(false);
 
+  const canSubmitRule = ruleText.trim().length > 0;
+
   useEffect(() => {
     loadData();
   }, [user?.id]);
+
+  // Re-renders every second so reminder cooldown countdowns stay live.
+  useEffect(() => {
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   function priorityColor(p: string) {
     if (p === "high")
@@ -232,6 +245,32 @@ export default function RulesScreen() {
       alert(err.message);
     } finally {
       setVotingId(null);
+    }
+  }
+
+  async function handleRemindNonVoters(
+    req: RuleRequestRow,
+    nonVoters: UserRow[],
+  ) {
+    if (cooldownRemaining(remindedAt[req.id] ?? null) > 0) return;
+    setRemindingId(req.id);
+    try {
+      const tokens = nonVoters
+        .map((u) => u.push_token)
+        .filter((t): t is string => !!t);
+      await Promise.all(
+        tokens.map((token) =>
+          sendPushNotification(
+            token,
+            "Vote Peraturan Menunggu",
+            `"${req.rules}" masih menunggu vote kamu. Yuk vote sebelum ditutup!`,
+            { data: { ruleRequestId: req.id }, categoryId: "rule_vote" },
+          ),
+        ),
+      );
+      setRemindedAt((prev) => ({ ...prev, [req.id]: Date.now() }));
+    } finally {
+      setRemindingId(null);
     }
   }
 
@@ -526,6 +565,43 @@ export default function RulesScreen() {
                             </Text>
                           )
                         )}
+
+                        {isOwn &&
+                          nonVoters.length > 0 &&
+                          (() => {
+                            const cooldown = cooldownRemaining(
+                              remindedAt[req.id] ?? null,
+                            );
+                            const isReminding = remindingId === req.id;
+                            return (
+                              <OutlinedButton
+                                enabled={cooldown === 0 && !isReminding}
+                                onClick={() =>
+                                  handleRemindNonVoters(req, nonVoters)
+                                }
+                                modifiers={[fillMaxWidth()]}
+                              >
+                                <Row
+                                  verticalAlignment="center"
+                                  horizontalArrangement={{ spacedBy: 6 }}
+                                >
+                                  <Icon
+                                    source={NotificationsActive}
+                                    tint={colors.primary}
+                                    size={16}
+                                  />
+                                  <Text
+                                    style={{ typography: "labelLarge" }}
+                                    color={colors.primary}
+                                  >
+                                    {cooldown > 0
+                                      ? `Ingatkan lagi dalam ${formatCooldown(cooldown)}`
+                                      : "Ingatkan yang belum vote"}
+                                  </Text>
+                                </Row>
+                              </OutlinedButton>
+                            );
+                          })()}
                       </Column>
                     </Box>
                   );
@@ -712,11 +788,16 @@ export default function RulesScreen() {
                 </Text>
               </OutlinedButton>
               <Button
-                enabled={!submitting}
+                enabled={canSubmitRule && !submitting}
                 onClick={handlePropose}
                 modifiers={[weight(1)]}
               >
-                <ButtonContent loading={submitting} label="Ajukan" color={colors.onPrimary} />
+                <ButtonContent
+                  loading={submitting}
+                  enabled={canSubmitRule}
+                  label="Ajukan"
+                  color={colors.onPrimary}
+                />
               </Button>
             </Row>
           </Column>

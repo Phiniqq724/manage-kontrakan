@@ -440,7 +440,12 @@ export function PayFormSheet({
             onClick={handleSubmit}
             modifiers={[weight(1)]}
           >
-            <ButtonContent loading={submitting} label="Kirim bukti" color={colors.onPrimary} />
+            <ButtonContent
+              loading={submitting}
+              enabled={!!docsUrl}
+              label="Kirim bukti"
+              color={colors.onPrimary}
+            />
           </Button>
         </Row>
       </Column>

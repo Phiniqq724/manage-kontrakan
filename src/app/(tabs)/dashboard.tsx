@@ -12,12 +12,12 @@ import { sendPushNotification } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import BugReport from "@expo/material-symbols/bug_report.xml";
 import CheckCircle from "@expo/material-symbols/check_circle.xml";
-import CleaningServices from "@expo/material-symbols/cleaning_services.xml";
+import ReceiptLong from "@expo/material-symbols/receipt_long.xml";
 import Description from "@expo/material-symbols/description.xml";
-import Groups from "@expo/material-symbols/groups.xml";
 import HowToVote from "@expo/material-symbols/how_to_vote.xml";
 import Notifications from "@expo/material-symbols/notifications.xml";
 import PersonAdd from "@expo/material-symbols/person_add.xml";
+import Receipt from "@expo/material-symbols/receipt.xml";
 import { Host } from "@expo/ui";
 import {
   Badge,
@@ -463,9 +463,9 @@ export default function DashboardScreen() {
             modifiers={[fillMaxWidth()]}
           >
             <QuickAction
-              icon={CleaningServices}
-              label="Piket"
-              onClick={() => router.push("/(tabs)/piket" as any)}
+              icon={ReceiptLong}
+              label="Split Bill"
+              onClick={() => router.push("/split-bill" as any)}
             />
             <QuickAction
               icon={PersonAdd}
@@ -480,9 +480,9 @@ export default function DashboardScreen() {
               onClick={() => router.push("/(tabs)/rules" as any)}
             />
             <QuickAction
-              icon={Groups}
-              label="Member"
-              onClick={() => router.push("/(tabs)/members" as any)}
+              icon={Receipt}
+              label="Kwitansi"
+              onClick={() => router.push("/receipts" as any)}
             />
           </Row>
 

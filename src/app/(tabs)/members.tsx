@@ -371,7 +371,7 @@ export default function MembersScreen() {
                 </Text>
               </TextButton>
               <Button
-                enabled={!submitting}
+                enabled={title.trim().length > 0 && !submitting}
                 onClick={handleSubmitReport}
                 colors={{
                   containerColor: colors.error,
@@ -381,6 +381,7 @@ export default function MembersScreen() {
               >
                 <ButtonContent
                   loading={submitting}
+                  enabled={title.trim().length > 0}
                   label="Kirim laporan"
                   color={colors.onError}
                 />

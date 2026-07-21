@@ -2,7 +2,7 @@
   "expo": {
     "name": "Semanggi",
     "slug": "manage-kontrakan",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/semanggi-icon.png",
     "scheme": "managekontrakan",
@@ -65,7 +65,8 @@
           "androidMode": "default"
         }
       ],
-      "./plugins/withAndroidMonochromeVector.js"
+      "./plugins/withAndroidMonochromeVector.js",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

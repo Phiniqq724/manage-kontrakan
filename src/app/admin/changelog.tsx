@@ -168,12 +168,13 @@ export default function AdminChangelogScreen() {
             </OutlinedTextField>
 
             <Button
-              enabled={!submitting}
+              enabled={title.trim().length > 0 && !submitting}
               onClick={handleSubmit}
               modifiers={[fillMaxWidth()]}
             >
               <ButtonContent
                 loading={submitting}
+                enabled={title.trim().length > 0}
                 label="Tambah & notif semua"
                 color={colors.onPrimary}
               />

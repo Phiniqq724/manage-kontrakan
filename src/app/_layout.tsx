@@ -69,6 +69,8 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="admin" />
           <Stack.Screen name="changelog" />
+          <Stack.Screen name="split-bill" />
+          <Stack.Screen name="receipts" />
         </Stack>
       </AuthProvider>
     </KeyboardProvider>

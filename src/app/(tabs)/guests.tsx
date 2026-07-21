@@ -210,6 +210,9 @@ export default function GuestsScreen() {
       ? "kamu"
       : firstName(users[g.invited_by ?? ""]?.fullname ?? "Seseorang");
 
+  const canSubmitGuest =
+    name.trim().length > 0 && !(checkOut && checkOut <= checkIn);
+
   return (
     <Host style={{ flex: 1 }}>
       <Box modifiers={[fillMaxSize()]}>
@@ -630,11 +633,16 @@ export default function GuestsScreen() {
                 </Text>
               </OutlinedButton>
               <Button
-                enabled={!saving}
+                enabled={canSubmitGuest && !saving}
                 onClick={handleAddGuest}
                 modifiers={[weight(1)]}
               >
-                <ButtonContent loading={saving} label="Simpan" color={colors.onPrimary} />
+                <ButtonContent
+                  loading={saving}
+                  enabled={canSubmitGuest}
+                  label="Simpan"
+                  color={colors.onPrimary}
+                />
               </Button>
             </Row>
           </Column>
