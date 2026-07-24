@@ -71,6 +71,8 @@ export default function RootLayout() {
           <Stack.Screen name="changelog" />
           <Stack.Screen name="split-bill" />
           <Stack.Screen name="receipts" />
+          <Stack.Screen name="events" />
+          <Stack.Screen name="requests" />
         </Stack>
       </AuthProvider>
     </KeyboardProvider>

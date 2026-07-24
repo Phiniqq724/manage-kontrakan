@@ -15,12 +15,14 @@ import ReceiptLong from "@expo/material-symbols/receipt_long.xml";
 import { Host } from "@expo/ui";
 import {
   Box,
+  Card,
   Column,
   ExtendedFloatingActionButton,
   Icon,
   IconButton,
   LinearProgressIndicator,
   ModalBottomSheet,
+  OutlinedButton,
   OutlinedCard,
   PullToRefreshBox,
   Row,
@@ -135,9 +137,13 @@ function CreatedBillCard({
     (p) => p.payment_status === "paid",
   ).length;
   return (
-    <OutlinedCard
-      border={{ color: colors.outlineVariant }}
-      modifiers={[fillMaxWidth(), clickable(onClick)]}
+    <Card
+      colors={{ containerColor: colors.surfaceContainerLow }}
+      modifiers={[
+        fillMaxWidth(),
+        clip(Shapes.RoundedCorner(20)),
+        clickable(onClick),
+      ]}
     >
       <Column
         verticalArrangement={{ spacedBy: 13 }}
@@ -210,7 +216,7 @@ function CreatedBillCard({
           </Text>
         </Row>
       </Column>
-    </OutlinedCard>
+    </Card>
   );
 }
 
@@ -393,9 +399,20 @@ export default function SplitBillScreen() {
               >
                 Split Bill
               </Text>
-              <IconButton onClick={() => setHistoryOpen(true)}>
-                <Icon source={History} tint={colors.onSurfaceVariant} size={22} />
-              </IconButton>
+              <OutlinedButton onClick={() => setHistoryOpen(true)}>
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 6 }}
+                >
+                  <Icon source={History} tint={colors.primary} size={18} />
+                  <Text
+                    style={{ typography: "labelLarge" }}
+                    color={colors.primary}
+                  >
+                    Riwayat
+                  </Text>
+                </Row>
+              </OutlinedButton>
             </Row>
 
             {loading ? (

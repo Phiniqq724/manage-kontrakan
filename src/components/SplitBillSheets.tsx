@@ -1,5 +1,6 @@
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
+import { ImageViewerModal } from "@/components/ImageViewerModal";
 import {
   paymentMethodsApi,
   splitBillParticipantsApi,
@@ -9,6 +10,7 @@ import {
 } from "@/services/api";
 import { cooldownRemaining, formatCooldown } from "@/utils/cooldown";
 import { sendPushNotification } from "@/utils/notifications";
+import { seedTextField } from "@/utils/seed-text-field";
 import type { Database } from "@/utils/supabase-types";
 import { pickAndUploadImage } from "@/utils/upload";
 import AccountBalance from "@expo/material-symbols/account_balance.xml";
@@ -22,6 +24,7 @@ import NotificationsActive from "@expo/material-symbols/notifications_active.xml
 import QrCode2 from "@expo/material-symbols/qr_code_2.xml";
 import {
   AssistChip,
+  BasicAlertDialog,
   Box,
   Button,
   Card,
@@ -47,6 +50,7 @@ import {
   Text,
   useMaterialColors,
   type MaterialColors,
+  type TextFieldRef,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -63,10 +67,9 @@ import {
   toggleable,
   verticalScroll,
   weight,
-  width,
 } from "@expo/ui/jetpack-compose/modifiers";
 import * as Clipboard from "expo-clipboard";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image, type ImageSourcePropType } from "react-native";
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
@@ -83,6 +86,14 @@ export type SplitBillDetail = SplitBillRow & {
   split_bill_payment_methods: SplitBillPaymentMethodRow[];
 };
 type SplitType = "equal" | "dynamic";
+
+/**
+ * A participant being assembled in the creation form, before the bill (and
+ * its `split_bill_participants` rows) exists. `userId` is null for a custom
+ * (unregistered) participant — `key` is what the draft list is keyed by
+ * instead, since a custom entry has no real id until after submit.
+ */
+type DraftParticipant = { key: string; userId: string | null; displayName: string };
 
 const TYPE_ICON: Record<string, ImageSourcePropType> = {
   bank: AccountBalance,
@@ -140,10 +151,17 @@ export function CreateSplitBillSheet({
   const [addUserMenuOpen, setAddUserMenuOpen] = useState(false);
 
   const [title, setTitle] = useState("");
-  const [participantIds, setParticipantIds] = useState<string[]>([userId]);
+  const [participants, setParticipants] = useState<DraftParticipant[]>([
+    { key: userId, userId, displayName: userFullname },
+  ]);
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
+  const [customNameText, setCustomNameText] = useState("");
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [subtotalText, setSubtotalText] = useState("");
   const [taxText, setTaxText] = useState("11");
+  const [ppnIncluded, setPpnIncluded] = useState(false);
+  const [lastManualTax, setLastManualTax] = useState("11");
+  const taxFieldRef = useRef<TextFieldRef>(null);
   const [perItemAmounts, setPerItemAmounts] = useState<Record<string, string>>(
     {},
   );
@@ -159,29 +177,51 @@ export function CreateSplitBillSheet({
     );
   }, [userId]);
 
-  const usersById = useMemo(
-    () => new Map(allUsers.map((u) => [u.id, u])),
-    [allUsers],
+  const addableUsers = allUsers.filter(
+    (u) => !participants.some((p) => p.userId === u.id),
   );
-  const addableUsers = allUsers.filter((u) => !participantIds.includes(u.id));
 
-  const taxPercentage = parseAmount(taxText);
+  const taxPercentage = ppnIncluded ? 0 : parseAmount(taxText);
   const subtotal =
     splitType === "equal"
       ? parseAmount(subtotalText)
-      : participantIds.reduce(
-          (sum, id) => sum + parseAmount(perItemAmounts[id] ?? ""),
+      : participants.reduce(
+          (sum, p) => sum + parseAmount(perItemAmounts[p.key] ?? ""),
           0,
         );
   const totalAmount = Math.round(subtotal * (1 + taxPercentage / 100));
   const perPerson =
-    splitType === "equal" && participantIds.length > 0
-      ? Math.round(totalAmount / participantIds.length)
+    splitType === "equal" && participants.length > 0
+      ? Math.round(totalAmount / participants.length)
       : 0;
+
+  const handleAddCustomParticipant = () => {
+    const name = customNameText.trim();
+    if (!name) return;
+    setParticipants((prev) => [
+      ...prev,
+      { key: `custom:${Date.now()}:${Math.random()}`, userId: null, displayName: name },
+    ]);
+    setCustomNameText("");
+    setCustomDialogOpen(false);
+  };
+
+  const handleTogglePpnIncluded = async () => {
+    const next = !ppnIncluded;
+    if (next) {
+      setLastManualTax(taxText);
+      setTaxText("0");
+      await seedTextField(taxFieldRef, "0");
+    } else {
+      setTaxText(lastManualTax);
+      await seedTextField(taxFieldRef, lastManualTax);
+    }
+    setPpnIncluded(next);
+  };
 
   const canSubmit =
     title.trim().length > 0 &&
-    participantIds.length > 0 &&
+    participants.length > 0 &&
     subtotal > 0 &&
     selectedMethodIds.length > 0 &&
     !submitting;
@@ -206,19 +246,20 @@ export function CreateSplitBillSheet({
         title: title.trim(),
         split_type: splitType,
         tax_percentage: taxPercentage,
+        ppn_included_in_price: ppnIncluded,
         subtotal,
         total_amount: totalAmount,
       });
       if (billError || !bill)
         throw billError ?? new Error("Gagal membuat split bill.");
 
-      const amountDueFor = (participantUserId: string, index: number) => {
+      const amountDueFor = (p: DraftParticipant, index: number) => {
         if (splitType === "equal") {
-          const isLast = index === participantIds.length - 1;
+          const isLast = index === participants.length - 1;
           if (!isLast) return perPerson;
-          return totalAmount - perPerson * (participantIds.length - 1);
+          return totalAmount - perPerson * (participants.length - 1);
         }
-        const base = parseAmount(perItemAmounts[participantUserId] ?? "");
+        const base = parseAmount(perItemAmounts[p.key] ?? "");
         return Math.round(base * (1 + taxPercentage / 100));
       };
 
@@ -226,12 +267,13 @@ export function CreateSplitBillSheet({
       // starts out paid — everyone else owes them back.
       const { error: participantsError } =
         await splitBillParticipantsApi.createMany(
-          participantIds.map((participantUserId, index) => {
-            const isCreator = participantUserId === userId;
+          participants.map((p, index) => {
+            const isCreator = p.userId === userId;
             return {
               split_bill_id: bill.id,
-              user_id: participantUserId,
-              amount_due: amountDueFor(participantUserId, index),
+              user_id: p.userId,
+              display_name: p.userId ? null : p.displayName,
+              amount_due: amountDueFor(p, index),
               payment_status: isCreator ? "paid" : "unpaid",
               paid_at: isCreator ? new Date().toISOString() : null,
             };
@@ -304,7 +346,7 @@ export function CreateSplitBillSheet({
               style={{ typography: "labelSmall" }}
               color={colors.onSurfaceVariant}
             >
-              {`${participantIds.length} dipilih`}
+              {`${participants.length} dipilih`}
             </Text>
           </Row>
           <FlowRow
@@ -312,24 +354,21 @@ export function CreateSplitBillSheet({
             verticalArrangement={{ spacedBy: 8 }}
             modifiers={[fillMaxWidth()]}
           >
-            {participantIds.map((id) => {
-              const isSelf = id === userId;
-              const person = usersById.get(id);
+            {participants.map((p) => {
+              const isSelf = p.userId === userId;
               return (
                 <InputChip
-                  key={id}
+                  key={p.key}
                   selected
                   enabled={!isSelf}
                   onClick={() =>
-                    setParticipantIds((prev) => prev.filter((p) => p !== id))
+                    setParticipants((prev) =>
+                      prev.filter((x) => x.key !== p.key),
+                    )
                   }
                 >
                   <InputChip.Label>
-                    <Text>
-                      {isSelf
-                        ? `${userFullname} (kamu)`
-                        : (person?.fullname ?? "Anggota")}
-                    </Text>
+                    <Text>{isSelf ? `${userFullname} (kamu)` : p.displayName}</Text>
                   </InputChip.Label>
                   {!isSelf && (
                     <InputChip.TrailingIcon>
@@ -365,7 +404,10 @@ export function CreateSplitBillSheet({
                     <DropdownMenuItem
                       key={u.id}
                       onClick={() => {
-                        setParticipantIds((prev) => [...prev, u.id]);
+                        setParticipants((prev) => [
+                          ...prev,
+                          { key: u.id, userId: u.id, displayName: u.fullname },
+                        ]);
                         setAddUserMenuOpen(false);
                       }}
                     >
@@ -377,8 +419,76 @@ export function CreateSplitBillSheet({
                 )}
               </DropdownMenu.Items>
             </DropdownMenu>
+            <AssistChip onClick={() => setCustomDialogOpen(true)}>
+              <AssistChip.LeadingIcon>
+                <Icon source={Add} tint={colors.primary} size={16} />
+              </AssistChip.LeadingIcon>
+              <AssistChip.Label>
+                <Text color={colors.primary}>Tambah non-anggota</Text>
+              </AssistChip.Label>
+            </AssistChip>
           </FlowRow>
         </Column>
+
+        {customDialogOpen && (
+          <BasicAlertDialog onDismissRequest={() => setCustomDialogOpen(false)}>
+            <Column
+              verticalArrangement={{ spacedBy: 16 }}
+              modifiers={[
+                fillMaxWidth(),
+                clip(Shapes.RoundedCorner(24)),
+                background(colors.surfaceContainerHigh),
+                padding(20, 20, 20, 20),
+              ]}
+            >
+              <Text
+                style={{ typography: "titleMedium", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Tambah peserta non-anggota
+              </Text>
+              <OutlinedTextField
+                singleLine
+                onValueChange={setCustomNameText}
+                keyboardOptions={{ capitalization: "words" }}
+                modifiers={[fillMaxWidth()]}
+              >
+                <OutlinedTextField.Label>
+                  <Text>Nama peserta</Text>
+                </OutlinedTextField.Label>
+              </OutlinedTextField>
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 12 }}
+                modifiers={[fillMaxWidth()]}
+              >
+                <OutlinedButton
+                  onClick={() => setCustomDialogOpen(false)}
+                  modifiers={[weight(1)]}
+                >
+                  <Text
+                    style={{ typography: "labelLarge" }}
+                    color={colors.primary}
+                  >
+                    Batal
+                  </Text>
+                </OutlinedButton>
+                <Button
+                  enabled={customNameText.trim().length > 0}
+                  onClick={handleAddCustomParticipant}
+                  modifiers={[weight(1)]}
+                >
+                  <Text
+                    style={{ typography: "labelLarge", fontWeight: "bold" }}
+                    color={colors.onPrimary}
+                  >
+                    Tambah
+                  </Text>
+                </Button>
+              </Row>
+            </Column>
+          </BasicAlertDialog>
+        )}
 
         <Column verticalArrangement={{ spacedBy: 8 }}>
           <Text
@@ -408,34 +518,19 @@ export function CreateSplitBillSheet({
         </Column>
 
         {splitType === "equal" ? (
-          <Row
-            horizontalArrangement={{ spacedBy: 12 }}
+          <OutlinedTextField
+            singleLine
+            onValueChange={setSubtotalText}
+            keyboardOptions={{ keyboardType: "number" }}
             modifiers={[fillMaxWidth()]}
           >
-            <OutlinedTextField
-              singleLine
-              onValueChange={setSubtotalText}
-              keyboardOptions={{ keyboardType: "number" }}
-              modifiers={[weight(1)]}
-            >
-              <OutlinedTextField.Label>
-                <Text>Subtotal</Text>
-              </OutlinedTextField.Label>
-              <OutlinedTextField.Placeholder>
-                <Text>Rp 0</Text>
-              </OutlinedTextField.Placeholder>
-            </OutlinedTextField>
-            <OutlinedTextField
-              singleLine
-              onValueChange={setTaxText}
-              keyboardOptions={{ keyboardType: "number" }}
-              modifiers={[width(110)]}
-            >
-              <OutlinedTextField.Label>
-                <Text>PPN (%)</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
-          </Row>
+            <OutlinedTextField.Label>
+              <Text>Subtotal</Text>
+            </OutlinedTextField.Label>
+            <OutlinedTextField.Placeholder>
+              <Text>Rp 0</Text>
+            </OutlinedTextField.Placeholder>
+          </OutlinedTextField>
         ) : (
           <Column verticalArrangement={{ spacedBy: 14 }}>
             <Text
@@ -444,17 +539,17 @@ export function CreateSplitBillSheet({
             >
               Item per peserta
             </Text>
-            {participantIds.map((id) => {
-              const isSelf = id === userId;
+            {participants.map((p) => {
+              const isSelf = p.userId === userId;
               const name = isSelf
                 ? `${userFullname} (kamu)`
-                : (usersById.get(id)?.fullname ?? "Anggota");
+                : p.displayName;
               return (
                 <OutlinedTextField
-                  key={id}
+                  key={p.key}
                   singleLine
                   onValueChange={(text) =>
-                    setPerItemAmounts((prev) => ({ ...prev, [id]: text }))
+                    setPerItemAmounts((prev) => ({ ...prev, [p.key]: text }))
                   }
                   keyboardOptions={{ keyboardType: "number" }}
                   modifiers={[fillMaxWidth()]}
@@ -465,18 +560,37 @@ export function CreateSplitBillSheet({
                 </OutlinedTextField>
               );
             })}
-            <OutlinedTextField
-              singleLine
-              onValueChange={setTaxText}
-              keyboardOptions={{ keyboardType: "number" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>PPN (%)</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
           </Column>
         )}
+
+        <Column verticalArrangement={{ spacedBy: 9 }}>
+          <OutlinedTextField
+            ref={taxFieldRef}
+            singleLine
+            enabled={!ppnIncluded}
+            onValueChange={setTaxText}
+            keyboardOptions={{ keyboardType: "number" }}
+            modifiers={[fillMaxWidth()]}
+          >
+            <OutlinedTextField.Label>
+              <Text>PPN (%)</Text>
+            </OutlinedTextField.Label>
+          </OutlinedTextField>
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement={{ spacedBy: 8 }}
+            modifiers={[
+              toggleable(ppnIncluded, handleTogglePpnIncluded, {
+                role: "checkbox",
+              }),
+            ]}
+          >
+            <Checkbox value={ppnIncluded} />
+            <Text style={{ typography: "bodyMedium" }} color={colors.onSurface}>
+              Harga sudah termasuk PPN
+            </Text>
+          </Row>
+        </Column>
 
         <Card
           colors={{ containerColor: colors.surfaceContainer }}
@@ -547,7 +661,7 @@ export function CreateSplitBillSheet({
                   style={{ typography: "bodyMedium", fontWeight: "600" }}
                   color={colors.primary}
                 >
-                  {`Per orang (÷${participantIds.length || 1})`}
+                  {`Per orang (÷${participants.length || 1})`}
                 </Text>
                 <Text
                   style={{ typography: "bodyMedium", fontWeight: "600" }}
@@ -714,6 +828,8 @@ export function SplitBillDetailSheet({
   );
   const [remindedAt, setRemindedAt] = useState<number | null>(null);
   const [reminding, setReminding] = useState(false);
+  const [customPayTarget, setCustomPayTarget] =
+    useState<SplitBillParticipantRow | null>(null);
   const [, tick] = useState(0);
 
   useEffect(() => {
@@ -753,7 +869,7 @@ export function SplitBillDetailSheet({
     setReminding(true);
     try {
       const tokens = unpaid
-        .map((p) => usersById.get(p.user_id)?.push_token)
+        .map((p) => (p.user_id ? usersById.get(p.user_id)?.push_token : null))
         .filter((t): t is string => !!t);
       await Promise.all(
         tokens.map((token) =>
@@ -804,6 +920,7 @@ export function SplitBillDetailSheet({
   const reminderCooldown = cooldownRemaining(remindedAt);
 
   return (
+    <>
     <ModalBottomSheet onDismissRequest={onClose}>
       <Column
         verticalArrangement={{ spacedBy: 16 }}
@@ -963,16 +1080,21 @@ export function SplitBillDetailSheet({
             {`PESERTA · ${total} ORANG`}
           </Text>
           {participants.map((p) => {
+            const isCustom = p.user_id === null;
             const participantUser =
               p.user_id === currentUser.id
                 ? currentUser
-                : usersById.get(p.user_id);
+                : p.user_id
+                  ? usersById.get(p.user_id)
+                  : undefined;
             const name =
               p.user_id === currentUser.id
                 ? `${currentUser.fullname} (kamu)`
-                : (participantUser?.fullname ?? "Anggota");
+                : isCustom
+                  ? (p.display_name ?? "Anggota")
+                  : (participantUser?.fullname ?? "Anggota");
             const { bg, fg } = statusColor(p.payment_status, colors);
-            const avatarColors = avatarColorFor(p.user_id, colors);
+            const avatarColors = avatarColorFor(p.user_id ?? p.id, colors);
 
             if (isCreator && p.payment_status === "pending_verification") {
               return (
@@ -1117,11 +1239,20 @@ export function SplitBillDetailSheet({
               );
             }
 
+            const canConfirmCustom =
+              isCreator && isCustom && p.payment_status !== "paid";
+
             return (
               <Card
                 key={p.id}
                 colors={{ containerColor: colors.surfaceContainerLow }}
-                modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(18))]}
+                modifiers={[
+                  fillMaxWidth(),
+                  clip(Shapes.RoundedCorner(18)),
+                  ...(canConfirmCustom
+                    ? [clickable(() => setCustomPayTarget(p))]
+                    : []),
+                ]}
               >
                 <Row
                   verticalAlignment="center"
@@ -1150,7 +1281,9 @@ export function SplitBillDetailSheet({
                     >
                       {p.user_id === bill.creator_id
                         ? "Pembuat tagihan"
-                        : formatRupiah(p.amount_due)}
+                        : canConfirmCustom
+                          ? `${formatRupiah(p.amount_due)} · ketuk untuk konfirmasi`
+                          : formatRupiah(p.amount_due)}
                     </Text>
                   </Column>
                   <Row
@@ -1191,6 +1324,177 @@ export function SplitBillDetailSheet({
           )}
       </Column>
     </ModalBottomSheet>
+    {customPayTarget && (
+      <ConfirmCustomPaymentSheet
+        participant={customPayTarget}
+        offeredMethods={offeredMethods}
+        onClose={() => setCustomPayTarget(null)}
+        onConfirmed={() => {
+          setCustomPayTarget(null);
+          loadData();
+        }}
+      />
+    )}
+    </>
+  );
+}
+
+function ConfirmCustomPaymentSheet({
+  participant,
+  offeredMethods,
+  onClose,
+  onConfirmed,
+}: {
+  participant: SplitBillParticipantRow;
+  offeredMethods: PaymentMethodRow[];
+  onClose: () => void;
+  onConfirmed: () => void;
+}) {
+  const colors = useMaterialColors();
+  const selectableMethods = offeredMethods.filter((m) => m.type !== "qris");
+  const [methodId, setMethodId] = useState<string | null>(
+    selectableMethods[0]?.id ?? null,
+  );
+  const [confirming, setConfirming] = useState(false);
+
+  const handleConfirm = async () => {
+    if (!methodId) return;
+    setConfirming(true);
+    try {
+      const { error } = await splitBillParticipantsApi.update(participant.id, {
+        payment_status: "paid",
+        payment_method_id: methodId,
+        paid_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      onConfirmed();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  return (
+    <ModalBottomSheet onDismissRequest={onClose}>
+      <Column
+        verticalArrangement={{ spacedBy: 16 }}
+        modifiers={[
+          fillMaxWidth(),
+          verticalScroll(),
+          padding(24, 8, 24, 32),
+        ]}
+      >
+        <Column verticalArrangement={{ spacedBy: 4 }}>
+          <Text
+            style={{ typography: "headlineSmall", fontWeight: "bold" }}
+            color={colors.onSurface}
+          >
+            {`Konfirmasi bayar · ${participant.display_name ?? "Anggota"}`}
+          </Text>
+          <Text
+            style={{ typography: "bodyMedium" }}
+            color={colors.onSurfaceVariant}
+          >
+            {`${formatRupiah(participant.amount_due)} · dikonfirmasi olehmu, tanpa bukti transfer`}
+          </Text>
+        </Column>
+
+        <Column verticalArrangement={{ spacedBy: 9 }}>
+          <Text
+            style={{ typography: "labelMedium", fontWeight: "bold" }}
+            color={colors.onSurface}
+          >
+            Metode bayar
+          </Text>
+          {selectableMethods.length === 0 ? (
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurfaceVariant}
+            >
+              Tidak ada metode pembayaran yang ditawarkan pada bill ini.
+            </Text>
+          ) : (
+            selectableMethods.map((pm) => (
+              <Row
+                key={pm.id}
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 12 }}
+                modifiers={[
+                  fillMaxWidth(),
+                  clip(Shapes.RoundedCorner(14)),
+                  selectable(
+                    methodId === pm.id,
+                    () => setMethodId(pm.id),
+                    "radioButton",
+                  ),
+                  padding(12, 10, 12, 10),
+                ]}
+              >
+                <Box
+                  contentAlignment="center"
+                  modifiers={[
+                    size(40, 40),
+                    clip(Shapes.RoundedCorner(12)),
+                    background(colors.secondaryContainer),
+                  ]}
+                >
+                  <Icon
+                    source={TYPE_ICON[pm.type] ?? AccountBalance}
+                    tint={colors.onSecondaryContainer}
+                    size={20}
+                  />
+                </Box>
+                <Column
+                  verticalArrangement={{ spacedBy: 2 }}
+                  modifiers={[weight(1)]}
+                >
+                  <Text
+                    style={{ typography: "bodyMedium", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    {pm.provider_name}
+                  </Text>
+                  {pm.account_number && (
+                    <Text
+                      style={{ typography: "labelSmall" }}
+                      color={colors.onSurfaceVariant}
+                    >
+                      {pm.account_number}
+                    </Text>
+                  )}
+                </Column>
+                <RadioButton selected={methodId === pm.id} />
+              </Row>
+            ))
+          )}
+        </Column>
+
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: 12 }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
+            <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+              Batal
+            </Text>
+          </OutlinedButton>
+          <Button
+            enabled={!confirming && !!methodId}
+            onClick={handleConfirm}
+            modifiers={[weight(1)]}
+          >
+            <ButtonContent
+              loading={confirming}
+              enabled={!!methodId}
+              label="Konfirmasi"
+              color={colors.onPrimary}
+            />
+          </Button>
+        </Row>
+      </Column>
+    </ModalBottomSheet>
   );
 }
 
@@ -1225,6 +1529,7 @@ export function SplitBillPayFormSheet({
     null,
   );
   const [loadedProofUrl, setLoadedProofUrl] = useState<string | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -1268,7 +1573,7 @@ export function SplitBillPayFormSheet({
     try {
       const url = await pickAndUploadImage(
         "payment-proofs",
-        participant.user_id,
+        participant.user_id ?? participant.id,
       );
       if (url) setProofUrl(url);
     } catch (err: any) {
@@ -1301,7 +1606,8 @@ export function SplitBillPayFormSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
+    <>
+      <ModalBottomSheet onDismissRequest={onClose}>
       <Column
         verticalArrangement={{ spacedBy: 16 }}
         modifiers={[
@@ -1353,9 +1659,11 @@ export function SplitBillPayFormSheet({
               <Box
                 contentAlignment="center"
                 modifiers={[
-                  size(200, 200),
+                  fillMaxWidth(),
+                  height(240),
                   clip(Shapes.RoundedCorner(12)),
-                  background(colors.surfaceContainerHighest),
+                  background(colors.surface),
+                  clickable(() => setViewerOpen(true)),
                 ]}
               >
                 <RNHostView>
@@ -1375,6 +1683,12 @@ export function SplitBillPayFormSheet({
                   />
                 )}
               </Box>
+              <Text
+                style={{ typography: "bodySmall", textAlign: "center" }}
+                color={colors.onSurfaceVariant}
+              >
+                Ketuk untuk perbesar
+              </Text>
             </Column>
           </Card>
         )}
@@ -1586,6 +1900,12 @@ export function SplitBillPayFormSheet({
           </Button>
         </Row>
       </Column>
-    </ModalBottomSheet>
+      </ModalBottomSheet>
+      <ImageViewerModal
+        uri={qrisMethod?.qris_image_url ?? null}
+        visible={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+      />
+    </>
   );
 }

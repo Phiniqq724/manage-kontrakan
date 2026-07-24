@@ -578,9 +578,10 @@ export function PaymentMethodFormSheet({
                     <Box
                       contentAlignment="center"
                       modifiers={[
-                        size(140, 140),
-                        clip(Shapes.RoundedCorner(16)),
-                        background(colors.surfaceContainerHighest),
+                        fillMaxWidth(),
+                        height(240),
+                        clip(Shapes.RoundedCorner(12)),
+                        background(colors.surface),
                       ]}
                     >
                       <RNHostView>

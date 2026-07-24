@@ -53,6 +53,97 @@ export type Database = {
           },
         ]
       }
+      event_votes: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          is_attending: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          is_attending: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          is_attending?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_votes_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      events: {
+        Row: {
+          created_at: string
+          creator_id: string
+          event_time: string
+          id: string
+          location: string
+          modified_at: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          event_time: string
+          id?: string
+          location: string
+          modified_at?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          event_time?: string
+          id?: string
+          location?: string
+          modified_at?: string
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "events_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       guests: {
         Row: {
           activity: string | null
@@ -499,6 +590,94 @@ export type Database = {
           },
         ]
       }
+      request_votes: {
+        Row: {
+          created_at: string
+          id: string
+          request_id: string
+          user_id: string
+          vote_value: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          request_id: string
+          user_id: string
+          vote_value: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          request_id?: string
+          user_id?: string
+          vote_value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_votes_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      requests: {
+        Row: {
+          created_at: string
+          creator_id: string
+          description: string | null
+          id: string
+          modified_at: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          creator_id: string
+          description?: string | null
+          id?: string
+          modified_at?: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          creator_id?: string
+          description?: string | null
+          id?: string
+          modified_at?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requests_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requests_creator_id_fkey"
+            columns: ["creator_id"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rule_request_votes: {
         Row: {
           created_at: string
@@ -636,6 +815,7 @@ export type Database = {
         Row: {
           amount_due: number
           created_at: string
+          display_name: string | null
           id: string
           modified_at: string
           paid_at: string | null
@@ -643,11 +823,12 @@ export type Database = {
           payment_status: string
           proof_of_payment_url: string | null
           split_bill_id: string
-          user_id: string
+          user_id: string | null
         }
         Insert: {
           amount_due: number
           created_at?: string
+          display_name?: string | null
           id?: string
           modified_at?: string
           paid_at?: string | null
@@ -655,11 +836,12 @@ export type Database = {
           payment_status?: string
           proof_of_payment_url?: string | null
           split_bill_id: string
-          user_id: string
+          user_id?: string | null
         }
         Update: {
           amount_due?: number
           created_at?: string
+          display_name?: string | null
           id?: string
           modified_at?: string
           paid_at?: string | null
@@ -667,7 +849,7 @@ export type Database = {
           payment_status?: string
           proof_of_payment_url?: string | null
           split_bill_id?: string
-          user_id?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -742,6 +924,7 @@ export type Database = {
           creator_id: string
           id: string
           modified_at: string
+          ppn_included_in_price: boolean
           split_type: string
           subtotal: number
           tax_percentage: number
@@ -753,6 +936,7 @@ export type Database = {
           creator_id: string
           id?: string
           modified_at?: string
+          ppn_included_in_price?: boolean
           split_type?: string
           subtotal: number
           tax_percentage?: number
@@ -764,6 +948,7 @@ export type Database = {
           creator_id?: string
           id?: string
           modified_at?: string
+          ppn_included_in_price?: boolean
           split_type?: string
           subtotal?: number
           tax_percentage?: number

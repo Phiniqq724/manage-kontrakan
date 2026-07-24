@@ -1,3 +1,4 @@
+import { checkAndAutoUnlink } from "@/utils/multi-session";
 import { supabase } from "@/utils/supabase";
 
 export async function signIn(email: string, password: string) {
@@ -6,6 +7,15 @@ export async function signIn(email: string, password: string) {
     password,
   });
   if (error) throw error;
+
+  if (data.user) {
+    try {
+      await checkAndAutoUnlink(data.user.id);
+    } catch {
+      // Never let the linking-cleanup check block a successful login.
+    }
+  }
+
   return data.session;
 }
 

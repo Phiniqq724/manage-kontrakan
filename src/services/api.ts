@@ -175,6 +175,73 @@ export const ruleRequestVotesApi = {
     }),
 };
 
+// EVENTS API
+export const eventsApi = {
+  getAll: async () =>
+    await supabase.from("events").select("*").order("event_time"),
+  getById: async (id: string) =>
+    await supabase.from("events").select("*").eq("id", id).single(),
+  create: async (data: InsertTables<"events">) =>
+    await supabase.from("events").insert(data).select().single(),
+  delete: async (id: string) =>
+    await supabase.from("events").delete().eq("id", id),
+};
+
+// EVENT VOTES API
+export const eventVotesApi = {
+  // Row Level Security allows anyone to SELECT every vote, so the attendee
+  // list/tally can be built client-side from one query, no RPC needed.
+  getAll: async () => await supabase.from("event_votes").select("*"),
+  cast: async (eventId: string, userId: string, isAttending: boolean) =>
+    await supabase
+      .from("event_votes")
+      .upsert(
+        { event_id: eventId, user_id: userId, is_attending: isAttending },
+        { onConflict: "event_id,user_id" },
+      )
+      .select()
+      .single(),
+  retract: async (eventId: string, userId: string) =>
+    await supabase
+      .from("event_votes")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("user_id", userId),
+};
+
+// REQUESTS API
+export const requestsApi = {
+  getAll: async () =>
+    await supabase
+      .from("requests")
+      .select("*")
+      .order("created_at", { ascending: false }),
+  create: async (data: InsertTables<"requests">) =>
+    await supabase.from("requests").insert(data).select().single(),
+  delete: async (id: string) =>
+    await supabase.from("requests").delete().eq("id", id),
+};
+
+// REQUEST VOTES API
+export const requestVotesApi = {
+  getAll: async () => await supabase.from("request_votes").select("*"),
+  cast: async (requestId: string, userId: string, voteValue: 1 | -1) =>
+    await supabase
+      .from("request_votes")
+      .upsert(
+        { request_id: requestId, user_id: userId, vote_value: voteValue },
+        { onConflict: "request_id,user_id" },
+      )
+      .select()
+      .single(),
+  retract: async (requestId: string, userId: string) =>
+    await supabase
+      .from("request_votes")
+      .delete()
+      .eq("request_id", requestId)
+      .eq("user_id", userId),
+};
+
 // CHANGELOGS API
 export const changelogsApi = {
   getAll: async () =>
@@ -210,6 +277,22 @@ export const paymentMethodsApi = {
       .select("*")
       .eq("user_id", userId)
       .order("created_at"),
+  /** The kontrakan admin's QRIS image, for members to scan when paying rent. */
+  getAdminQris: async (): Promise<string | null> => {
+    const { data: admin } = await supabase
+      .from("users")
+      .select("id")
+      .eq("role", "admin")
+      .single();
+    if (!admin) return null;
+    const { data } = await supabase
+      .from("payment_methods")
+      .select("qris_image_url")
+      .eq("user_id", admin.id)
+      .eq("type", "qris")
+      .maybeSingle();
+    return data?.qris_image_url ?? null;
+  },
   create: async (data: InsertTables<"payment_methods">) =>
     await supabase.from("payment_methods").insert(data).select().single(),
   update: async (id: string, data: UpdateTables<"payment_methods">) =>

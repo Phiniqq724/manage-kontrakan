@@ -149,3 +149,28 @@ export async function unlinkAccount(linkId: string): Promise<void> {
   if (error) throw error;
   await setLinkedSession(null);
 }
+
+/**
+ * On a fresh login, deletes a stale `linked_accounts` row when this device
+ * has no local session for the paired account. Only acts on the `owner_id`
+ * side: the linked/secondary account's owner is the only one who ever gets a
+ * `LinkedSession` written to this device (see `linkAccount`), so a normal
+ * login by the linked user — who never has one by design — must not be
+ * mistaken for a stale link. Any inconclusive signal (network/query error,
+ * SecureStore failure) is treated as "don't know" and left untouched, never
+ * as a confirmed absence.
+ */
+export async function checkAndAutoUnlink(userId: string): Promise<void> {
+  const { data: linkRow, error } = await linkedAccountsApi.getForUser(userId);
+  if (error || !linkRow || linkRow.owner_id !== userId) return;
+
+  let session: LinkedSession | null;
+  try {
+    session = await getLinkedSession();
+  } catch {
+    return;
+  }
+  if (session === null) {
+    await linkedAccountsApi.delete(linkRow.id);
+  }
+}
