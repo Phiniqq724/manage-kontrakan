@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_releases: {
+        Row: {
+          apk_url: string
+          build_number: number | null
+          created_at: string
+          id: string
+          is_mandatory: boolean
+          release_notes: string | null
+          version: string
+        }
+        Insert: {
+          apk_url: string
+          build_number?: number | null
+          created_at?: string
+          id?: string
+          is_mandatory?: boolean
+          release_notes?: string | null
+          version: string
+        }
+        Update: {
+          apk_url?: string
+          build_number?: number | null
+          created_at?: string
+          id?: string
+          is_mandatory?: boolean
+          release_notes?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       changelogs: {
         Row: {
           created_at: string

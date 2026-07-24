@@ -9,7 +9,8 @@ import {
   PaymentsListSheet,
   type PaymentRow,
 } from "@/components/PaymentsSheets";
-import { kamarApi, paymentsApi, usersApi } from "@/services/api";
+import { appReleasesApi, kamarApi, paymentsApi, usersApi } from "@/services/api";
+import { isNewerVersion } from "@/utils/app-update";
 import { signOut } from "@/utils/auth";
 import { useAuth } from "@/utils/auth-context";
 import { seedTextField } from "@/utils/seed-text-field";
@@ -18,9 +19,11 @@ import type { Database } from "@/utils/supabase-types";
 import { captureAndUploadImage, pickAndUploadImage } from "@/utils/upload";
 import AdminPanelSettings from "@expo/material-symbols/admin_panel_settings.xml";
 import ArrowBack from "@expo/material-symbols/arrow_back.xml";
+import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import ChevronRight from "@expo/material-symbols/chevron_right.xml";
 import Close from "@expo/material-symbols/close.xml";
 import Edit from "@expo/material-symbols/edit.xml";
+import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import Logout from "@expo/material-symbols/logout.xml";
 import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import PhotoLibrary from "@expo/material-symbols/photo_library.xml";
@@ -60,11 +63,16 @@ import {
   verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
+import Constants from "expo-constants";
 import { router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 type KamarRow = Database["public"]["Tables"]["kamar"]["Row"];
+type AppReleaseRow = Database["public"]["Tables"]["app_releases"]["Row"];
+
+const CURRENT_VERSION = Constants.expoConfig?.version ?? "—";
 
 function kamarLabel(k: KamarRow | null) {
   if (!k) return null;
@@ -84,6 +92,7 @@ export default function ProfileScreen() {
   const [tagihanSheetOpen, setTagihanSheetOpen] = useState(false);
   const [detailPayment, setDetailPayment] = useState<PaymentRow | null>(null);
   const [payFormPayment, setPayFormPayment] = useState<PaymentRow | null>(null);
+  const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(null);
 
   useEffect(() => {
     if (user?.id) loadData();
@@ -91,14 +100,16 @@ export default function ProfileScreen() {
 
   async function loadData() {
     if (!user) return;
-    const [payRes, kamarRes] = await Promise.all([
+    const [payRes, kamarRes, releaseRes] = await Promise.all([
       paymentsApi.getByUser(user.id),
       kamarApi.getByUser(user.id),
+      appReleasesApi.getLatest(),
     ]);
     if (payRes.data) {
       setPayments(payRes.data.sort((a, b) => b.period.localeCompare(a.period)));
     }
     setKamar(kamarRes.data ?? null);
+    setLatestRelease(releaseRes.data ?? null);
   }
 
   const closeAllPaymentSheets = () => {
@@ -271,6 +282,8 @@ export default function ProfileScreen() {
             </Row>
           )}
 
+          <AppVersionCard latest={latestRelease} />
+
           <OutlinedButton onClick={handleLogout} modifiers={[fillMaxWidth()]}>
             <Row
               verticalAlignment="center"
@@ -416,6 +429,92 @@ function InfoRow({
         )}
       </Row>
     </Row>
+  );
+}
+
+function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
+  const colors = useMaterialColors();
+  const [opening, setOpening] = useState(false);
+  const updateAvailable =
+    !!latest && isNewerVersion(CURRENT_VERSION, latest.version);
+
+  const handleDownload = async () => {
+    if (!latest?.apk_url) return;
+    setOpening(true);
+    try {
+      await WebBrowser.openBrowserAsync(latest.apk_url);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <OutlinedCard modifiers={[fillMaxWidth()]}>
+      <Column
+        verticalArrangement={{ spacedBy: 12 }}
+        modifiers={[fillMaxWidth(), paddingAll(16)]}
+      >
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: 12 }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <Icon
+            source={updateAvailable ? SystemUpdate : CheckCircle}
+            tint={updateAvailable ? colors.primary : colors.onSurfaceVariant}
+            size={22}
+          />
+          <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+            <Text
+              style={{ typography: "bodyLarge", fontWeight: "bold" }}
+              color={colors.onSurface}
+            >
+              Versi aplikasi
+            </Text>
+            <Text
+              style={{ typography: "bodySmall" }}
+              color={colors.onSurfaceVariant}
+            >
+              {updateAvailable
+                ? `Versi ${latest!.version} tersedia · kamu di ${CURRENT_VERSION}`
+                : `Kamu sudah di versi terbaru (${CURRENT_VERSION})`}
+            </Text>
+          </Column>
+        </Row>
+
+        {updateAvailable && !!latest?.release_notes && (
+          <Text
+            style={{ typography: "bodySmall" }}
+            color={colors.onSurfaceVariant}
+          >
+            {latest.release_notes}
+          </Text>
+        )}
+
+        {updateAvailable && (
+          <Button
+            enabled={!opening}
+            onClick={handleDownload}
+            modifiers={[fillMaxWidth()]}
+          >
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 8 }}
+            >
+              <Icon source={SystemUpdate} tint={colors.onPrimary} size={18} />
+              <Text
+                style={{ typography: "labelLarge", fontWeight: "bold" }}
+                color={colors.onPrimary}
+              >
+                Perbarui sekarang
+              </Text>
+            </Row>
+          </Button>
+        )}
+      </Column>
+    </OutlinedCard>
   );
 }
 

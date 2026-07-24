@@ -186,6 +186,17 @@ export const changelogsApi = {
     await supabase.from("changelogs").insert(data).select().single(),
 };
 
+// APP RELEASES API
+export const appReleasesApi = {
+  getLatest: async () =>
+    await supabase
+      .from("app_releases")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+};
+
 // REPORTS API
 export const reportsApi = {
   getAll: async () => await supabase.from("reports").select("*"),
