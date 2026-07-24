@@ -23,7 +23,7 @@ import {
   reportsApi,
   usersApi,
 } from "@/services/api";
-import { isNewerVersion } from "@/utils/app-update";
+import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
 import { useAuth } from "@/utils/auth-context";
 import {
   smartSignOut,
@@ -740,7 +740,15 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
     if (!latest?.apk_url) return;
     setOpening(true);
     try {
-      await WebBrowser.openBrowserAsync(latest.apk_url);
+      // Try the in-app download + native installer first; falls back to a
+      // browser download on older builds without the native modules.
+      const installed = await downloadAndInstallApk(
+        latest.apk_url,
+        latest.version,
+      );
+      if (!installed) {
+        await WebBrowser.openBrowserAsync(latest.apk_url);
+      }
     } catch (err: any) {
       alert(err.message);
     } finally {

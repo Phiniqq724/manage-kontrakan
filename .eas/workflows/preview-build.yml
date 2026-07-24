@@ -13,3 +13,33 @@ jobs:
     params:
       platform: android
       profile: preview
+
+  publish_release:
+    name: Publish release and notify
+    needs: [build_android]
+    # Publish + notify only on version tags (e.g. v2.1.0). Ordinary pushes to
+    # main still build, but don't spam everyone with an "update available" push.
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    # Injects EAS environment variables (PUBLISH_RELEASE_SECRET) into the shell.
+    environment: production
+    steps:
+      - name: Resolve APK URL and publish release
+        run: |
+          set -euo pipefail
+          BUILD_ID="${{ needs.build_android.outputs.build_id }}"
+          VERSION="${{ needs.build_android.outputs.app_version }}"
+
+          APK_URL=$(eas build:list --json --non-interactive --limit 10 --platform android \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const a=JSON.parse(s);const b=a.find(x=>x.id===process.argv[1])||a[0];console.log(b?.artifacts?.applicationArchiveUrl||b?.artifacts?.buildUrl||'')});" "$BUILD_ID")
+
+          if [ -z "$APK_URL" ]; then
+            echo "Could not resolve APK artifact URL for build $BUILD_ID" >&2
+            exit 1
+          fi
+
+          echo "Publishing version $VERSION"
+          curl -fsS -X POST \
+            "https://lidtkayomwohylmiiqss.supabase.co/functions/v1/publish-release" \
+            -H "Content-Type: application/json" \
+            -H "x-publish-secret: $PUBLISH_RELEASE_SECRET" \
+            -d "$(node -e "console.log(JSON.stringify({version:process.argv[1],apk_url:process.argv[2]}))" "$VERSION" "$APK_URL")"

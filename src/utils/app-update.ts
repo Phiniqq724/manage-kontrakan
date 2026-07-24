@@ -32,3 +32,44 @@ export function compareVersions(a: string, b: string): number {
 export function isNewerVersion(current: string, latest: string): boolean {
   return compareVersions(latest, current) > 0;
 }
+
+/**
+ * Downloads an APK to the app cache and launches the Android package installer.
+ *
+ * The native modules (`expo-file-system`, `expo-intent-launcher`) are loaded
+ * lazily via `require` so this stays safe to run in builds — or OTA updates —
+ * that don't include them (e.g. an older install that predates this feature).
+ * In that case, or on non-Android platforms, it resolves to `false` so the
+ * caller can fall back to opening the download URL in a browser.
+ *
+ * @param apkUrl - Direct URL to the `.apk` file.
+ * @param version - Version label, used to name the cached file.
+ * @returns True if the native installer was launched, false if unsupported/failed.
+ */
+export async function downloadAndInstallApk(
+  apkUrl: string,
+  version: string,
+): Promise<boolean> {
+  const { Platform } = require("react-native");
+  if (Platform.OS !== "android") return false;
+  try {
+    const { File, Directory, Paths } = require("expo-file-system");
+    const IntentLauncher = require("expo-intent-launcher");
+
+    // Fresh directory each time so a re-download never collides with a
+    // previously cached APK of the same name.
+    const dir = new Directory(Paths.cache, "updates");
+    if (dir.exists) dir.delete();
+    dir.create();
+
+    const file = await File.downloadFileAsync(apkUrl, dir);
+    await IntentLauncher.startActivityAsync("android.intent.action.VIEW", {
+      data: file.contentUri,
+      flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+      type: "application/vnd.android.package-archive",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
