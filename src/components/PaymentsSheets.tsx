@@ -1,16 +1,20 @@
 import { ButtonContent } from "@/components/ButtonContent";
-import { paymentsApi } from "@/services/api";
+import { ImageViewerModal } from "@/components/ImageViewerModal";
+import { paymentMethodsApi, paymentsApi } from "@/services/api";
 import { getAdminToken, sendPushNotification } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import { pickAndUploadImage } from "@/utils/upload";
+import ReceiptLong from "@expo/material-symbols/receipt_long.xml";
 import {
   Box,
   Button,
   CircularWavyProgressIndicator,
   Column,
   HorizontalDivider,
+  Icon,
   ModalBottomSheet,
   OutlinedButton,
+  OutlinedCard,
   RNHostView,
   Row,
   Text,
@@ -31,7 +35,7 @@ import {
   verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image } from "react-native";
 
 export type PaymentRow = Database["public"]["Tables"]["payments"]["Row"];
@@ -328,8 +332,16 @@ export function PayFormSheet({
 }) {
   const colors = useMaterialColors();
   const [docsUrl, setDocsUrl] = useState<string | null>(null);
+  const [loadedDocsUrl, setLoadedDocsUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [adminQris, setAdminQris] = useState<string | null>(null);
+  const [adminQrisLoaded, setAdminQrisLoaded] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+
+  useEffect(() => {
+    paymentMethodsApi.getAdminQris().then(setAdminQris);
+  }, []);
 
   const handlePickProof = async () => {
     setUploading(true);
@@ -373,7 +385,8 @@ export function PayFormSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
+    <>
+      <ModalBottomSheet onDismissRequest={onClose}>
       <Column
         verticalArrangement={{ spacedBy: 16 }}
         modifiers={[
@@ -383,7 +396,7 @@ export function PayFormSheet({
           padding(24, 8, 24, 32),
         ]}
       >
-        <Column verticalArrangement={{ spacedBy: 4 }}>
+        <Column key="header" verticalArrangement={{ spacedBy: 4 }}>
           <Text
             style={{ typography: "headlineSmall", fontWeight: "bold" }}
             color={colors.onSurface}
@@ -398,24 +411,129 @@ export function PayFormSheet({
           </Text>
         </Column>
 
-        <OutlinedButton
-          enabled={!uploading}
-          onClick={handlePickProof}
-          modifiers={[fillMaxWidth()]}
-        >
-          {uploading ? (
-            <CircularWavyProgressIndicator
-              color={colors.primary}
-              modifiers={[size(20, 20)]}
-            />
-          ) : (
-            <Text style={{ typography: "labelLarge" }} color={colors.primary}>
-              {docsUrl ? "Bukti terunggah" : "Unggah bukti transfer"}
+        {adminQris && (
+          <Column
+            key="qris"
+            horizontalAlignment="center"
+            verticalArrangement={{ spacedBy: 8 }}
+            modifiers={[
+              fillMaxWidth(),
+              clip(Shapes.RoundedCorner(16)),
+              background(colors.surfaceContainerLow),
+              padding(16, 16, 16, 20),
+            ]}
+          >
+            <Text
+              style={{ typography: "labelMedium", fontWeight: "bold" }}
+              color={colors.onSurface}
+            >
+              Scan QRIS untuk membayar
             </Text>
-          )}
-        </OutlinedButton>
+            <Box
+              contentAlignment="center"
+              modifiers={[
+                fillMaxWidth(),
+                height(240),
+                clip(Shapes.RoundedCorner(12)),
+                background(colors.surface),
+                clickable(() => setViewerOpen(true)),
+              ]}
+            >
+              <RNHostView>
+                <Image
+                  source={{ uri: adminQris }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
+                  onLoad={() => setAdminQrisLoaded(true)}
+                />
+              </RNHostView>
+              {!adminQrisLoaded && (
+                <CircularWavyProgressIndicator
+                  color={colors.primary}
+                  modifiers={[size(28, 28)]}
+                />
+              )}
+            </Box>
+            <Text
+              style={{ typography: "bodySmall", textAlign: "center" }}
+              color={colors.onSurfaceVariant}
+            >
+              Ketuk QRIS untuk perbesar, lalu unggah bukti transfernya di bawah.
+            </Text>
+          </Column>
+        )}
+
+        <OutlinedCard
+          key="upload"
+          border={{ width: 2, color: colors.outline }}
+          colors={{ containerColor: colors.surfaceContainerLow }}
+          modifiers={[fillMaxWidth(), clickable(handlePickProof)]}
+        >
+          <Column
+            horizontalAlignment="center"
+            verticalArrangement={{ spacedBy: 12 }}
+            modifiers={[fillMaxWidth(), padding(16, 20, 16, 20)]}
+          >
+            {uploading ? (
+              <CircularWavyProgressIndicator
+                color={colors.primary}
+                modifiers={[size(32, 32)]}
+              />
+            ) : docsUrl ? (
+              <>
+                <Box
+                  contentAlignment="center"
+                  modifiers={[
+                    fillMaxWidth(),
+                    height(220),
+                    clip(Shapes.RoundedCorner(12)),
+                    background(colors.surfaceContainerHighest),
+                  ]}
+                >
+                  <RNHostView>
+                    <Image
+                      source={{ uri: docsUrl }}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="contain"
+                      onLoad={() => setLoadedDocsUrl(docsUrl)}
+                    />
+                  </RNHostView>
+                  {loadedDocsUrl !== docsUrl && (
+                    <CircularWavyProgressIndicator
+                      color={colors.primary}
+                      modifiers={[size(28, 28)]}
+                    />
+                  )}
+                </Box>
+                <Text
+                  style={{ typography: "bodyMedium", fontWeight: "600" }}
+                  color={colors.onSurface}
+                >
+                  Bukti terunggah · ketuk untuk ganti
+                </Text>
+              </>
+            ) : (
+              <>
+                <Icon source={ReceiptLong} tint={colors.primary} size={40} />
+                <Text
+                  style={{ typography: "bodyMedium", fontWeight: "600" }}
+                  color={colors.onSurface}
+                >
+                  Unggah bukti transfer
+                </Text>
+                <Text
+                  style={{ typography: "bodySmall", textAlign: "center" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Ketuk untuk pilih tangkapan layar transfer
+                </Text>
+              </>
+            )}
+          </Column>
+        </OutlinedCard>
 
         <Text
+          key="note"
           style={{ typography: "bodySmall" }}
           color={colors.onSurfaceVariant}
         >
@@ -423,27 +541,39 @@ export function PayFormSheet({
         </Text>
 
         <Row
+          key="actions"
           verticalAlignment="center"
           horizontalArrangement={{ spacedBy: 12 }}
           modifiers={[fillMaxWidth()]}
         >
-          <TextButton onClick={onClose} modifiers={[weight(1)]}>
+          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
             <Text
               style={{ typography: "labelLarge" }}
               color={colors.onSurfaceVariant}
             >
               Batal
             </Text>
-          </TextButton>
+          </OutlinedButton>
           <Button
             enabled={!submitting && !!docsUrl}
             onClick={handleSubmit}
             modifiers={[weight(1)]}
           >
-            <ButtonContent loading={submitting} label="Kirim bukti" color={colors.onPrimary} />
+            <ButtonContent
+              loading={submitting}
+              enabled={!!docsUrl}
+              label="Kirim bukti"
+              color={colors.onPrimary}
+            />
           </Button>
         </Row>
       </Column>
-    </ModalBottomSheet>
+      </ModalBottomSheet>
+      <ImageViewerModal
+        uri={adminQris}
+        visible={viewerOpen}
+        onClose={() => setViewerOpen(false)}
+      />
+    </>
   );
 }

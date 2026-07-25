@@ -10,11 +10,11 @@ import {
   Icon,
   IconButton,
   ModalBottomSheet,
+  OutlinedButton,
   PullToRefreshBox,
   RNHostView,
   Row,
   Text,
-  TextButton,
   useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
@@ -90,7 +90,10 @@ export default function AdminReportsScreen() {
             <IconButton onClick={() => router.back()}>
               <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
             </IconButton>
-            <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+            <Column
+              verticalArrangement={{ spacedBy: 2 }}
+              modifiers={[weight(1)]}
+            >
               <Text
                 style={{ typography: "titleLarge", fontWeight: "bold" }}
                 color={colors.onBackground}
@@ -151,7 +154,9 @@ export default function AdminReportsScreen() {
                         style={{ typography: "bodySmall" }}
                         color={colors.onSurfaceVariant}
                       >
-                        {`${reporter?.fullname ?? "Unknown"} → ${suspect?.fullname ?? "Unknown"}`}
+                        {r.suspect
+                          ? `${reporter?.fullname ?? "Unknown"} → ${suspect?.fullname ?? "Unknown"}`
+                          : `Laporan umum · ${reporter?.fullname ?? "Unknown"}`}
                       </Text>
                       {r.created_at && (
                         <Text
@@ -201,7 +206,9 @@ export default function AdminReportsScreen() {
                 style={{ typography: "bodyMedium" }}
                 color={colors.onSurfaceVariant}
               >
-                {`${users[selected.created_by ?? ""]?.fullname ?? "Unknown"} melaporkan ${users[selected.suspect ?? ""]?.fullname ?? "Unknown"}`}
+                {selected.suspect
+                  ? `${users[selected.created_by ?? ""]?.fullname ?? "Unknown"} melaporkan ${users[selected.suspect]?.fullname ?? "Unknown"}`
+                  : `Laporan umum dari ${users[selected.created_by ?? ""]?.fullname ?? "Unknown"}`}
               </Text>
             </Column>
 
@@ -235,7 +242,7 @@ export default function AdminReportsScreen() {
               </Box>
             )}
 
-            <TextButton
+            <OutlinedButton
               onClick={() => setSelected(null)}
               modifiers={[fillMaxWidth()]}
             >
@@ -245,7 +252,7 @@ export default function AdminReportsScreen() {
               >
                 Tutup
               </Text>
-            </TextButton>
+            </OutlinedButton>
           </Column>
         </ModalBottomSheet>
       )}

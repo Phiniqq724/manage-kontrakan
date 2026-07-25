@@ -137,7 +137,7 @@ export default function PiketScreen() {
       )[0] ?? null;
 
   const otherMembers = Object.values(users).filter(
-    (u) => u.id !== currentUser?.id,
+    (u) => u.id !== currentUser?.id && u.role !== "admin",
   );
 
   const upcomingGroups: { day: string; group: PiketRow[] }[] = (() => {
@@ -757,11 +757,16 @@ export default function PiketScreen() {
             </Column>
 
             <Button
-              enabled={!submitting}
+              enabled={!!selectedReplacementId && !submitting}
               onClick={handleSubmitIzin}
               modifiers={[fillMaxWidth(), height(56)]}
             >
-              <ButtonContent loading={submitting} label="Ajukan" color={colors.onPrimary} />
+              <ButtonContent
+                loading={submitting}
+                enabled={!!selectedReplacementId}
+                label="Ajukan"
+                color={colors.onPrimary}
+              />
             </Button>
           </Column>
         </ModalBottomSheet>

@@ -22,7 +22,6 @@ import {
   RNHostView,
   Row,
   Text,
-  TextButton,
   useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
@@ -104,7 +103,9 @@ export default function AdminPaymentsScreen() {
         const period = formatPaymentPeriod(selected.period);
         await sendPushNotification(
           payer.push_token,
-          action === "approve" ? "Pembayaran Dikonfirmasi" : "Pembayaran Ditolak",
+          action === "approve"
+            ? "Pembayaran Dikonfirmasi"
+            : "Pembayaran Ditolak",
           action === "approve"
             ? finalStatus === "on_time"
               ? `Pembayaran ${period} kamu dikonfirmasi. Tepat waktu!`
@@ -127,7 +128,7 @@ export default function AdminPaymentsScreen() {
       const now = new Date();
       const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
       const dueDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(DUE_DAY).padStart(2, "0")}`;
-      const nonAdminUsers = Object.values(users).filter(
+      const billableUsers = Object.values(users).filter(
         (u) => u.role !== "admin",
       );
       const existing = await paymentsApi.getAll();
@@ -138,7 +139,7 @@ export default function AdminPaymentsScreen() {
       );
 
       let created = 0;
-      for (const u of nonAdminUsers) {
+      for (const u of billableUsers) {
         if (!existingPeriods.has(u.id)) {
           const { error: createError } = await paymentsApi.create({
             paid_by: u.id,
@@ -187,7 +188,10 @@ export default function AdminPaymentsScreen() {
             <IconButton onClick={() => router.back()}>
               <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
             </IconButton>
-            <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
+            <Column
+              verticalArrangement={{ spacedBy: 2 }}
+              modifiers={[weight(1)]}
+            >
               <Text
                 style={{ typography: "titleLarge", fontWeight: "bold" }}
                 color={colors.onBackground}
@@ -345,21 +349,13 @@ export default function AdminPaymentsScreen() {
                 onClick={() => handleConfirm("approve")}
                 modifiers={[weight(1)]}
               >
-                <ButtonContent loading={processing} label="Konfirmasi" color={colors.onPrimary} />
+                <ButtonContent
+                  loading={processing}
+                  label="Konfirmasi"
+                  color={colors.onPrimary}
+                />
               </Button>
             </Row>
-
-            <TextButton
-              onClick={() => setSelected(null)}
-              modifiers={[fillMaxWidth()]}
-            >
-              <Text
-                style={{ typography: "labelLarge" }}
-                color={colors.onSurfaceVariant}
-              >
-                Tutup
-              </Text>
-            </TextButton>
           </Column>
         </ModalBottomSheet>
       )}

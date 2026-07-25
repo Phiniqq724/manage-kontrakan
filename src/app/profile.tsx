@@ -1,5 +1,11 @@
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
+import { AddAccountSheet } from "@/components/LinkedAccountSheet";
+import {
+  PaymentMethodFormSheet,
+  PaymentMethodsListSheet,
+  type PaymentMethodRow,
+} from "@/components/PaymentMethodSheets";
 import {
   formatPaymentPeriod,
   isPayable,
@@ -9,10 +15,25 @@ import {
   PaymentsListSheet,
   type PaymentRow,
 } from "@/components/PaymentsSheets";
+import {
+  appReleasesApi,
+  kamarApi,
+  linkedAccountsApi,
+  paymentsApi,
+  reportsApi,
+  usersApi,
+} from "@/services/api";
+import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
 import { appReleasesApi, kamarApi, paymentsApi, usersApi } from "@/services/api";
 import { isNewerVersion } from "@/utils/app-update";
 import { signOut } from "@/utils/auth";
 import { useAuth } from "@/utils/auth-context";
+import {
+  smartSignOut,
+  switchToLinkedAccount,
+  unlinkAccount,
+} from "@/utils/multi-session";
+import { getAdminToken, sendPushNotification } from "@/utils/notifications";
 import { seedTextField } from "@/utils/seed-text-field";
 import { supabase } from "@/utils/supabase";
 import type { Database } from "@/utils/supabase-types";
@@ -23,10 +44,15 @@ import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import ChevronRight from "@expo/material-symbols/chevron_right.xml";
 import Close from "@expo/material-symbols/close.xml";
 import Edit from "@expo/material-symbols/edit.xml";
+import Flag from "@expo/material-symbols/flag.xml";
+import LinkOff from "@expo/material-symbols/link_off.xml";
 import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import Logout from "@expo/material-symbols/logout.xml";
+import PersonAdd from "@expo/material-symbols/person_add.xml";
 import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import PhotoLibrary from "@expo/material-symbols/photo_library.xml";
+import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
+import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import { Host } from "@expo/ui";
 import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
@@ -92,6 +118,20 @@ export default function ProfileScreen() {
   const [tagihanSheetOpen, setTagihanSheetOpen] = useState(false);
   const [detailPayment, setDetailPayment] = useState<PaymentRow | null>(null);
   const [payFormPayment, setPayFormPayment] = useState<PaymentRow | null>(null);
+  const [paymentMethodsSheetOpen, setPaymentMethodsSheetOpen] = useState(false);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  const [paymentMethodFormOpen, setPaymentMethodFormOpen] = useState(false);
+  const [editingPaymentMethod, setEditingPaymentMethod] =
+    useState<PaymentMethodRow | null>(null);
+  const [addAccountSheetOpen, setAddAccountSheetOpen] = useState(false);
+  const [linkedAccount, setLinkedAccount] = useState<{
+    id: string;
+    partnerName: string;
+  } | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(
+    null,
+  );
   const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(null);
 
   useEffect(() => {
@@ -100,15 +140,30 @@ export default function ProfileScreen() {
 
   async function loadData() {
     if (!user) return;
-    const [payRes, kamarRes, releaseRes] = await Promise.all([
+    const [payRes, kamarRes, linkRes, releaseRes] = await Promise.all([
       paymentsApi.getByUser(user.id),
       kamarApi.getByUser(user.id),
+      linkedAccountsApi.getForUser(user.id),
       appReleasesApi.getLatest(),
     ]);
     if (payRes.data) {
       setPayments(payRes.data.sort((a, b) => b.period.localeCompare(a.period)));
     }
     setKamar(kamarRes.data ?? null);
+
+    if (linkRes.data) {
+      const partnerId =
+        linkRes.data.owner_id === user.id
+          ? linkRes.data.linked_user_id
+          : linkRes.data.owner_id;
+      const { data: partner } = await usersApi.getById(partnerId);
+      setLinkedAccount({
+        id: linkRes.data.id,
+        partnerName: partner?.fullname ?? "Akun tertaut",
+      });
+    } else {
+      setLinkedAccount(null);
+    }
     setLatestRelease(releaseRes.data ?? null);
   }
 
@@ -124,8 +179,48 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    await signOut();
-    router.replace("/auth/login");
+    if (!user) return;
+    const switchedToFallback = await smartSignOut(user.id);
+    // setSession() (used internally to restore the fallback session) only
+    // fires a SIGNED_IN auth event — which AuthProvider listens for to
+    // refetch `user` — when the stored token hasn't expired yet. If it has,
+    // Supabase silently refreshes it instead and fires TOKEN_REFRESHED,
+    // which AuthProvider ignores, leaving `user` stuck on the account that
+    // just signed out. Refresh explicitly so this doesn't depend on that.
+    if (switchedToFallback) await refresh();
+    router.replace(
+      switchedToFallback ? ("/(tabs)/dashboard" as any) : "/auth/login",
+    );
+  };
+
+  const handleSwitchAccount = async () => {
+    if (!user) return;
+    setSwitching(true);
+    try {
+      await switchToLinkedAccount({
+        id: user.id,
+        fullname: user.fullname,
+        email: user.email,
+      });
+      // See handleLogout above — don't rely on the SIGNED_IN auth event to
+      // pick up the switched-to account, since it may not fire.
+      await refresh();
+      router.replace("/(tabs)/dashboard" as any);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const handleUnlinkAccount = async () => {
+    if (!linkedAccount) return;
+    try {
+      await unlinkAccount(linkedAccount.id);
+      setLinkedAccount(null);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   if (!user) return null;
@@ -245,6 +340,79 @@ export default function ProfileScreen() {
               size={20}
             />
           </Row>
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement="spaceBetween"
+            modifiers={[
+              fillMaxWidth(),
+              clip(Shapes.RoundedCorner(18)),
+              background(colors.surfaceContainerLow),
+              clickable(() => setPaymentMethodsSheetOpen(true)),
+              paddingAll(16),
+            ]}
+          >
+            <Column
+              verticalArrangement={{ spacedBy: 2 }}
+              modifiers={[weight(1)]}
+            >
+              <Text
+                style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                color={colors.onSurface}
+              >
+                Payment Method
+              </Text>
+              <Text
+                style={{ typography: "bodySmall" }}
+                color={colors.onSurfaceVariant}
+                overflow="ellipsis"
+                maxLines={1}
+              >
+                Personalize your payment method
+              </Text>
+            </Column>
+            <Icon
+              source={ChevronRight}
+              tint={colors.onSurfaceVariant}
+              size={20}
+            />
+          </Row>
+          <Row
+            verticalAlignment="center"
+            horizontalArrangement="spaceBetween"
+            modifiers={[
+              fillMaxWidth(),
+              clip(Shapes.RoundedCorner(18)),
+              background(colors.surfaceContainerLow),
+              clickable(() => setReportSheetOpen(true)),
+              paddingAll(16),
+            ]}
+          >
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 12 }}
+            >
+              <Icon source={Flag} tint={colors.onSurfaceVariant} size={22} />
+              <Column verticalArrangement={{ spacedBy: 2 }}>
+                <Text
+                  style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                  color={colors.onSurface}
+                >
+                  Buat laporan
+                </Text>
+                <Text
+                  style={{ typography: "bodySmall" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Laporkan masalah aplikasi atau kontrakan
+                </Text>
+              </Column>
+            </Row>
+            <Icon
+              source={ChevronRight}
+              tint={colors.onSurfaceVariant}
+              size={20}
+            />
+          </Row>
 
           {user.role === "admin" && (
             <Row
@@ -280,6 +448,89 @@ export default function ProfileScreen() {
                 size={20}
               />
             </Row>
+          )}
+
+          {linkedAccount ? (
+            <Row
+              key="linked-account"
+              verticalAlignment="center"
+              horizontalArrangement="spaceBetween"
+              modifiers={[
+                fillMaxWidth(),
+                clip(Shapes.RoundedCorner(18)),
+                background(colors.surfaceContainerLow),
+                clickable(handleSwitchAccount),
+                paddingAll(16),
+              ]}
+            >
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 12 }}
+                modifiers={[weight(1)]}
+              >
+                {switching ? (
+                  <ButtonContent
+                    loading
+                    enabled={false}
+                    label=""
+                    color={colors.onSurfaceVariant}
+                  />
+                ) : (
+                  <Icon
+                    source={SwapHoriz}
+                    tint={colors.onSurfaceVariant}
+                    size={22}
+                  />
+                )}
+                <Text
+                  style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                  color={colors.onSurface}
+                >
+                  {`Beralih ke ${linkedAccount.partnerName}`}
+                </Text>
+              </Row>
+              <IconButton onClick={handleUnlinkAccount}>
+                <Icon source={LinkOff} tint={colors.error} size={20} />
+              </IconButton>
+            </Row>
+          ) : (
+            user.role === "sup-member" && (
+              <Row
+                key="add-account"
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[
+                  fillMaxWidth(),
+                  clip(Shapes.RoundedCorner(18)),
+                  background(colors.surfaceContainerLow),
+                  clickable(() => setAddAccountSheetOpen(true)),
+                  paddingAll(16),
+                ]}
+              >
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement={{ spacedBy: 12 }}
+                  modifiers={[]}
+                >
+                  <Icon
+                    source={PersonAdd}
+                    tint={colors.onSurfaceVariant}
+                    size={22}
+                  />
+                  <Text
+                    style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                    color={colors.onSurface}
+                  >
+                    Tambah akun
+                  </Text>
+                </Row>
+                <Icon
+                  source={ChevronRight}
+                  tint={colors.onSurfaceVariant}
+                  size={20}
+                />
+              </Row>
+            )
           )}
 
           <AppVersionCard latest={latestRelease} />
@@ -372,6 +623,58 @@ export default function ProfileScreen() {
           }}
         />
       )}
+
+      {paymentMethodsSheetOpen && (
+        <PaymentMethodsListSheet
+          userId={user.id}
+          onClose={() => setPaymentMethodsSheetOpen(false)}
+          onAdd={() => {
+            setPaymentMethodsSheetOpen(false);
+            setEditingPaymentMethod(null);
+            setPaymentMethodFormOpen(true);
+          }}
+          onEdit={(method) => {
+            setPaymentMethodsSheetOpen(false);
+            setEditingPaymentMethod(method);
+            setPaymentMethodFormOpen(true);
+          }}
+        />
+      )}
+
+      {paymentMethodFormOpen && (
+        <PaymentMethodFormSheet
+          userId={user.id}
+          userFullname={user.fullname}
+          method={editingPaymentMethod}
+          onClose={() => {
+            setPaymentMethodFormOpen(false);
+            setPaymentMethodsSheetOpen(true);
+          }}
+          onSaved={() => {
+            setPaymentMethodFormOpen(false);
+            setPaymentMethodsSheetOpen(true);
+          }}
+        />
+      )}
+
+      {addAccountSheetOpen && (
+        <AddAccountSheet
+          ownerId={user.id}
+          onClose={() => setAddAccountSheetOpen(false)}
+          onLinked={() => {
+            setAddAccountSheetOpen(false);
+            loadData();
+          }}
+        />
+      )}
+
+      {reportSheetOpen && (
+        <ReportIssueSheet
+          userId={user.id}
+          userFullname={user.fullname}
+          onClose={() => setReportSheetOpen(false)}
+        />
+      )}
     </Host>
   );
 }
@@ -442,7 +745,15 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
     if (!latest?.apk_url) return;
     setOpening(true);
     try {
-      await WebBrowser.openBrowserAsync(latest.apk_url);
+      // Try the in-app download + native installer first; falls back to a
+      // browser download on older builds without the native modules.
+      const installed = await downloadAndInstallApk(
+        latest.apk_url,
+        latest.version,
+      );
+      if (!installed) {
+        await WebBrowser.openBrowserAsync(latest.apk_url);
+      }
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -729,7 +1040,11 @@ function EditProfileSheet({
           onClick={handleSaveProfile}
           modifiers={[fillMaxWidth()]}
         >
-          <ButtonContent loading={saving} label="Simpan profil" color={colors.onPrimary} />
+          <ButtonContent
+            loading={saving}
+            label="Simpan profil"
+            color={colors.onPrimary}
+          />
         </Button>
 
         <HorizontalDivider color={colors.outlineVariant} />
@@ -825,8 +1140,155 @@ function ChangePasswordSheet({
           onClick={handleChangePassword}
           modifiers={[fillMaxWidth()]}
         >
-          <ButtonContent loading={changingPw} label="Ubah password" color={colors.onPrimary} />
+          <ButtonContent
+            loading={changingPw}
+            label="Ubah password"
+            color={colors.onPrimary}
+          />
         </Button>
+      </Column>
+    </ModalBottomSheet>
+  );
+}
+
+function ReportIssueSheet({
+  userId,
+  userFullname,
+  onClose,
+}: {
+  userId: string;
+  userFullname: string;
+  onClose: () => void;
+}) {
+  const colors = useMaterialColors();
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [evidenceUri, setEvidenceUri] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handlePickEvidence = async () => {
+    try {
+      const url = await pickAndUploadImage("report-evidence", userId);
+      if (url) setEvidenceUri(url);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!title.trim()) {
+      alert("Judul laporan wajib diisi.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { error } = await reportsApi.create({
+        title,
+        description: desc,
+        suspect: null,
+        created_by: userId,
+        docs: evidenceUri,
+      });
+      if (error) throw error;
+      onClose();
+      const adminToken = await getAdminToken();
+      if (adminToken) {
+        await sendPushNotification(
+          adminToken,
+          "Laporan Baru",
+          `${userFullname} membuat laporan: ${title}.`,
+        );
+      }
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <ModalBottomSheet onDismissRequest={onClose}>
+      <Column
+        verticalArrangement={{ spacedBy: 16 }}
+        modifiers={[
+          fillMaxWidth(),
+          verticalScroll(),
+          imePadding(),
+          padding(24, 8, 24, 32),
+        ]}
+      >
+        <Column verticalArrangement={{ spacedBy: 4 }}>
+          <Text
+            style={{ typography: "headlineSmall", fontWeight: "bold" }}
+            color={colors.onSurface}
+          >
+            Buat laporan
+          </Text>
+          <Text
+            style={{ typography: "bodyMedium" }}
+            color={colors.onSurfaceVariant}
+          >
+            Laporkan masalah aplikasi atau kontrakan secara umum
+          </Text>
+        </Column>
+
+        <OutlinedTextField
+          singleLine
+          onValueChange={setTitle}
+          keyboardOptions={{ capitalization: "sentences" }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <OutlinedTextField.Label>
+            <Text>Judul laporan</Text>
+          </OutlinedTextField.Label>
+        </OutlinedTextField>
+
+        <OutlinedTextField
+          onValueChange={setDesc}
+          minLines={3}
+          keyboardOptions={{ capitalization: "sentences" }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <OutlinedTextField.Label>
+            <Text>Deskripsi</Text>
+          </OutlinedTextField.Label>
+        </OutlinedTextField>
+
+        <OutlinedButton
+          onClick={handlePickEvidence}
+          modifiers={[fillMaxWidth()]}
+        >
+          <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+            {evidenceUri ? "Bukti terlampir" : "Lampirkan bukti (opsional)"}
+          </Text>
+        </OutlinedButton>
+
+        <Row
+          verticalAlignment="center"
+          horizontalArrangement={{ spacedBy: 12 }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
+            <Text
+              style={{ typography: "labelLarge" }}
+              color={colors.onSurfaceVariant}
+            >
+              Batal
+            </Text>
+          </OutlinedButton>
+          <Button
+            enabled={title.trim().length > 0 && !submitting}
+            onClick={handleSubmit}
+            modifiers={[weight(1)]}
+          >
+            <ButtonContent
+              loading={submitting}
+              enabled={title.trim().length > 0}
+              label="Kirim laporan"
+              color={colors.onPrimary}
+            />
+          </Button>
+        </Row>
       </Column>
     </ModalBottomSheet>
   );
@@ -921,7 +1383,11 @@ function EditKamarSheet({
             onClick={handleSave}
             modifiers={[weight(1)]}
           >
-            <ButtonContent loading={saving} label="Simpan" color={colors.onPrimary} />
+            <ButtonContent
+              loading={saving}
+              label="Simpan"
+              color={colors.onPrimary}
+            />
           </Button>
         </Row>
       </Column>

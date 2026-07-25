@@ -12,12 +12,13 @@ import { sendPushNotification } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import BugReport from "@expo/material-symbols/bug_report.xml";
 import CheckCircle from "@expo/material-symbols/check_circle.xml";
-import CleaningServices from "@expo/material-symbols/cleaning_services.xml";
+import ReceiptLong from "@expo/material-symbols/receipt_long.xml";
 import Description from "@expo/material-symbols/description.xml";
-import Groups from "@expo/material-symbols/groups.xml";
-import HowToVote from "@expo/material-symbols/how_to_vote.xml";
+import Event from "@expo/material-symbols/event.xml";
+import Forum from "@expo/material-symbols/forum.xml";
 import Notifications from "@expo/material-symbols/notifications.xml";
 import PersonAdd from "@expo/material-symbols/person_add.xml";
+import Receipt from "@expo/material-symbols/receipt.xml";
 import { Host } from "@expo/ui";
 import {
   Badge,
@@ -76,7 +77,12 @@ type ActivityItem = {
   at: Date;
 };
 
-const parseTs = (s: string) => new Date(s.endsWith("Z") ? s : `${s}Z`);
+const parseTs = (s: string) =>
+  // Date-only values (e.g. `due_date` = "2026-07-10") parse as-is — appending
+  // "Z" to them yields an invalid date. Zone-less timestamps are treated as UTC.
+  /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? new Date(s)
+    : new Date(s.endsWith("Z") ? s : `${s}Z`);
 const firstName = (fullname: string) => fullname.split(" ")[0] ?? fullname;
 
 function withAlpha(hex: string, alphaHex: string) {
@@ -114,8 +120,6 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [payment, setPayment] = useState<PaymentRow | null>(null);
   const [payFormOpen, setPayFormOpen] = useState(false);
-  const [checkedInCount, setCheckedInCount] = useState(0);
-  const [pendingVoteCount, setPendingVoteCount] = useState(0);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
 
@@ -209,7 +213,6 @@ export default function DashboardScreen() {
         !votedIds.has(r.id) &&
         user.role !== "admin",
     );
-    setPendingVoteCount(votable.length);
     votable.slice(0, 2).forEach((r) => {
       attention.push({
         type: "rule",
@@ -221,7 +224,6 @@ export default function DashboardScreen() {
     setAttentionItems(attention);
 
     const allGuests: GuestRow[] = guestRes.data ?? [];
-    setCheckedInCount(allGuests.filter((g) => !g.check_out).length);
 
     const guestActivity: ActivityItem[] = allGuests
       .slice()
@@ -463,26 +465,24 @@ export default function DashboardScreen() {
             modifiers={[fillMaxWidth()]}
           >
             <QuickAction
-              icon={CleaningServices}
-              label="Piket"
-              onClick={() => router.push("/(tabs)/piket" as any)}
+              icon={ReceiptLong}
+              label="Split Bill"
+              onClick={() => router.push("/split-bill" as any)}
             />
             <QuickAction
-              icon={PersonAdd}
-              label="Tamu"
-              badge={checkedInCount}
-              onClick={() => router.push("/(tabs)/guests" as any)}
+              icon={Event}
+              label="Event"
+              onClick={() => router.push("/events" as any)}
             />
             <QuickAction
-              icon={HowToVote}
-              label="Vote"
-              badge={pendingVoteCount}
-              onClick={() => router.push("/(tabs)/rules" as any)}
+              icon={Forum}
+              label="Request"
+              onClick={() => router.push("/requests" as any)}
             />
             <QuickAction
-              icon={Groups}
-              label="Member"
-              onClick={() => router.push("/(tabs)/members" as any)}
+              icon={Receipt}
+              label="Kwitansi"
+              onClick={() => router.push("/receipts" as any)}
             />
           </Row>
 
