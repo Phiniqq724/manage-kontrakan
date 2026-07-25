@@ -24,9 +24,6 @@ import {
   usersApi,
 } from "@/services/api";
 import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
-import { appReleasesApi, kamarApi, paymentsApi, usersApi } from "@/services/api";
-import { isNewerVersion } from "@/utils/app-update";
-import { signOut } from "@/utils/auth";
 import { useAuth } from "@/utils/auth-context";
 import {
   smartSignOut,
@@ -46,7 +43,6 @@ import Close from "@expo/material-symbols/close.xml";
 import Edit from "@expo/material-symbols/edit.xml";
 import Flag from "@expo/material-symbols/flag.xml";
 import LinkOff from "@expo/material-symbols/link_off.xml";
-import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import Logout from "@expo/material-symbols/logout.xml";
 import PersonAdd from "@expo/material-symbols/person_add.xml";
 import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
@@ -132,7 +128,6 @@ export default function ProfileScreen() {
   const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(
     null,
   );
-  const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(null);
 
   useEffect(() => {
     if (user?.id) loadData();
