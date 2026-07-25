@@ -7,6 +7,40 @@ const cors = {
     "authorization, x-publish-secret, content-type",
 };
 
+/**
+ * Resolves the downloadable APK artifact URL for an EAS build via the Expo
+ * GraphQL API. Used when CI hands us a build_id instead of a ready URL (the
+ * build-job output has no artifact URL, and `eas` isn't available in workflow
+ * steps). Requires the EXPO_TOKEN env var (an Expo access/robot token).
+ *
+ * @param buildId - The EAS build id.
+ * @returns The application archive URL, or null if it can't be resolved.
+ */
+async function resolveApkUrl(buildId: string): Promise<string | null> {
+  const token = Deno.env.get("EXPO_TOKEN");
+  if (!token) throw new Error("EXPO_TOKEN is not configured");
+
+  const query =
+    "query($id: ID!){ builds { byId(buildId: $id){ artifacts { applicationArchiveUrl buildUrl } } } }";
+  const res = await fetch("https://api.expo.dev/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ query, variables: { id: buildId } }),
+  });
+
+  const json = await res.json();
+  if (json?.errors?.length) {
+    throw new Error(
+      `Expo API error: ${json.errors[0]?.message ?? "unknown"}`,
+    );
+  }
+  const artifacts = json?.data?.builds?.byId?.artifacts;
+  return artifacts?.applicationArchiveUrl ?? artifacts?.buildUrl ?? null;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -20,11 +54,21 @@ serve(async (req) => {
       });
     }
 
-    const { version, apk_url, release_notes } = await req.json();
-    if (!version || !apk_url) {
+    const { version, apk_url: providedUrl, build_id, release_notes } =
+      await req.json();
+    if (!version || (!providedUrl && !build_id)) {
       return new Response(
-        JSON.stringify({ error: "Missing: version, apk_url" }),
+        JSON.stringify({ error: "Missing: version and (apk_url or build_id)" }),
         { status: 400, headers: cors },
+      );
+    }
+
+    // Accept a ready-made apk_url, or resolve one from an EAS build_id.
+    const apk_url = providedUrl ?? (await resolveApkUrl(build_id));
+    if (!apk_url) {
+      return new Response(
+        JSON.stringify({ error: `Could not resolve APK URL for build ${build_id}` }),
+        { status: 502, headers: cors },
       );
     }
 
