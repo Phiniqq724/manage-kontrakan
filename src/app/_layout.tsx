@@ -1,4 +1,5 @@
-import { getMaterialColors, useMaterialColors } from "@expo/ui/jetpack-compose";
+import { useAppColors } from "@/components/AppHost";
+import { getMaterialColors } from "@expo/ui/jetpack-compose";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as Notifications from "expo-notifications";
@@ -7,33 +8,68 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as SystemUI from "expo-system-ui";
-import { LoadingScreen } from "../components/LoadingScreen";
-import { AuthProvider } from "../utils/auth-context";
+import { AppTabBar } from "../components/AppTabBar";
+import { SystemNavBackdrop } from "../components/SystemNavBackdrop";
+import { AuthProvider, useAuth } from "../utils/auth-context";
 import { registerRuleVoteCategory } from "../utils/notifications";
 import { handleRuleVoteNotificationResponse } from "../utils/rule-requests";
+import { loadSettings, SettingsProvider, useSettings } from "../utils/settings";
+import { TabActionProvider } from "../utils/tab-action";
+import { setAppNightMode } from "../../modules/scroll-reporter";
 
 SplashScreen.preventAutoHideAsync();
 
 // Set the native root view background before first paint so the Android
 // predictive-back preview and screen transitions don't flash the default
 // white window background behind our Material You-colored screens.
-SystemUI.setBackgroundColorAsync(getMaterialColors().background);
+// Uses the saved theme so a dark-mode user never sees a light flash on launch.
+const saved = (() => {
+  try {
+    return loadSettings(localStorage.getItem("semanggi.settings"));
+  } catch {
+    return loadSettings(null);
+  }
+})();
+SystemUI.setBackgroundColorAsync(
+  getMaterialColors({
+    seedColor: saved.seedColor ?? undefined,
+    scheme: saved.themeMode === "system" ? undefined : saved.themeMode,
+  }).background,
+);
+
+/** Keeps the native splash up until the session check finishes. */
+const HideSplashWhenReady = () => {
+  const { loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading) SplashScreen.hideAsync();
+  }, [loading]);
+
+  return null;
+};
 
 export default function RootLayout() {
-  const colors = useMaterialColors();
+  return (
+    <SettingsProvider>
+      <RootContent />
+    </SettingsProvider>
+  );
+}
+
+function RootContent() {
+  const colors = useAppColors();
+  const { settings } = useSettings();
   const [loaded] = useFonts({
     SpaceMono: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
   useEffect(() => {
-    // Hand off from the native splash to our own <LoadingScreen /> as soon
-    // as this first frame has committed, instead of waiting on fonts.
-    SplashScreen.hideAsync();
-  }, []);
-
-  useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.background);
   }, [colors.background]);
+
+  useEffect(() => {
+    setAppNightMode(settings.themeMode);
+  }, [settings.themeMode]);
 
   useEffect(() => {
     registerRuleVoteCategory();
@@ -50,30 +86,49 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, []);
 
-  if (!loaded) return <LoadingScreen />;
+  // The native splash stays visible until fonts and the session are ready.
+  if (!loaded) return null;
 
   return (
     <KeyboardProvider>
       <AuthProvider>
-        <StatusBar style="auto" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.background },
-            animation: "slide_from_right",
-            freezeOnBlur: true,
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="auth/login" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="admin" />
-          <Stack.Screen name="changelog" />
-          <Stack.Screen name="split-bill" />
-          <Stack.Screen name="receipts" />
-          <Stack.Screen name="events" />
-          <Stack.Screen name="requests" />
-        </Stack>
+        <TabActionProvider>
+          <HideSplashWhenReady />
+          <StatusBar
+            style={
+              settings.themeMode === "dark"
+                ? "light"
+                : settings.themeMode === "light"
+                  ? "dark"
+                  : "auto"
+            }
+          />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: colors.background },
+              animation: "slide_from_right",
+              freezeOnBlur: true,
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="auth/login" />
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="admin" />
+              <Stack.Screen name="receipts" />
+            <Stack.Screen name="events" />
+            <Stack.Screen name="requests" />
+            <Stack.Screen name="members" />
+          <Stack.Screen name="settings" />
+          <Stack.Screen name="piket" />
+          <Stack.Screen name="guests" />
+          <Stack.Screen name="rules" />
+          </Stack>
+          {/* Solid strip behind the phone's gesture bar, under the app navbar. */}
+        <SystemNavBackdrop />
+        {/* One floating navbar over every signed-in page. */}
+          <AppTabBar />
+        </TabActionProvider>
       </AuthProvider>
     </KeyboardProvider>
   );

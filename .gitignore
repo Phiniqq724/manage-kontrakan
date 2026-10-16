@@ -46,3 +46,6 @@ example
 .mcp.json
 .agents
 .claude
+
+# local native module build output
+modules/*/android/build/

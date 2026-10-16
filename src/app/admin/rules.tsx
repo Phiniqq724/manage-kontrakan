@@ -1,20 +1,19 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { PRIORITY_LABEL, type Priority } from "@/utils/rule-utils";
+import { BackButton } from "@/components/BackButton";
+import { useHideOnScroll } from "@/utils/tab-action";
 import { ButtonContent } from "@/components/ButtonContent";
 import { ruleRequestsApi, ruleRequestVotesApi, usersApi } from "@/services/api";
 import { approveRuleRequest, declineRuleRequest } from "@/utils/rule-requests";
 import type { Database } from "@/utils/supabase-types";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
-import { Host } from "@expo/ui";
 import {
   Button,
   Card,
   Column,
-  Icon,
-  IconButton,
   OutlinedButton,
   PullToRefreshBox,
   Row,
   Text,
-  useMaterialColors,
   type MaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
@@ -25,10 +24,8 @@ import {
   padding,
   paddingAll,
   Shapes,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 
 type RuleRequestRow = Database["public"]["Tables"]["rule_requests"]["Row"];
@@ -37,12 +34,6 @@ type VoteTally = {
   approve_count: number;
   decline_count: number;
   total_votes: number;
-};
-
-const PRIORITY_LABEL: Record<string, string> = {
-  high: "High",
-  medium: "Med",
-  low: "Low",
 };
 
 function priorityColor(priority: string, colors: MaterialColors) {
@@ -60,7 +51,7 @@ function priorityColor(priority: string, colors: MaterialColors) {
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const { bg, fg } = priorityColor(priority, colors);
   return (
     <Row
@@ -71,14 +62,15 @@ function PriorityBadge({ priority }: { priority: string }) {
       ]}
     >
       <Text style={{ typography: "labelSmall", fontWeight: "bold" }} color={fg}>
-        {PRIORITY_LABEL[priority] ?? priority}
+        {PRIORITY_LABEL[priority as Priority] ?? priority}
       </Text>
     </Row>
   );
 }
 
 export default function AdminRulesScreen() {
-  const colors = useMaterialColors();
+  const hideOnScroll = useHideOnScroll();
+  const colors = useAppColors();
   const [requests, setRequests] = useState<RuleRequestRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
   const [tallies, setTallies] = useState<Record<string, VoteTally>>({});
@@ -150,7 +142,7 @@ export default function AdminRulesScreen() {
   }
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -159,16 +151,14 @@ export default function AdminRulesScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 16 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           <Row
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 4 }}
             modifiers={[fillMaxWidth()]}
           >
-            <IconButton onClick={() => router.back()}>
-              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-            </IconButton>
+            <BackButton />
             <Column
               verticalArrangement={{ spacedBy: 2 }}
               modifiers={[weight(1)]}
@@ -267,7 +257,11 @@ export default function AdminRulesScreen() {
                       onClick={() => handleApprove(req)}
                       modifiers={[weight(1)]}
                     >
-                      <ButtonContent loading={isProcessing} label="Approve" color={colors.onPrimary} />
+                      <ButtonContent
+                        loading={isProcessing}
+                        label="Approve"
+                        color={colors.onPrimary}
+                      />
                     </Button>
                   </Row>
                 </Column>
@@ -276,6 +270,6 @@ export default function AdminRulesScreen() {
           })}
         </Column>
       </PullToRefreshBox>
-    </Host>
+    </AppHost>
   );
 }

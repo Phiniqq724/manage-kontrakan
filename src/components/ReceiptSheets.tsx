@@ -1,4 +1,7 @@
+import { useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
+import { FormField } from "@/components/FormField";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { receiptsApi } from "@/services/api";
 import type { Database } from "@/utils/supabase-types";
 import { pickAndUploadImage } from "@/utils/upload";
@@ -10,20 +13,17 @@ import WaterDrop from "@expo/material-symbols/water_drop.xml";
 import Wifi from "@expo/material-symbols/wifi.xml";
 import {
   Box,
-  Button,
   CircularWavyProgressIndicator,
   Column,
   Icon,
   ModalBottomSheet,
   OutlinedButton,
   OutlinedCard,
-  OutlinedTextField,
   RNHostView,
   Row,
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -31,7 +31,6 @@ import {
   clip,
   fillMaxWidth,
   height,
-  imePadding,
   padding,
   Shapes,
   size,
@@ -92,7 +91,7 @@ export function ReceiptFormSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
 
   const [category, setCategory] = useState<ReceiptCategory>("water");
   const [amount, setAmount] = useState("");
@@ -136,156 +135,122 @@ export function ReceiptFormSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
-      >
+    <FormSheet
+      title="Tambah kwitansi"
+      onClose={onClose}
+    >
+      <Column verticalArrangement={{ spacedBy: 7 }}>
         <Text
-          style={{ typography: "headlineSmall", fontWeight: "bold" }}
+          style={{ typography: "labelMedium", fontWeight: "bold" }}
           color={colors.onSurface}
         >
-          Tambah kwitansi
+          Kategori
         </Text>
-
-        <Column verticalArrangement={{ spacedBy: 7 }}>
-          <Text
-            style={{ typography: "labelMedium", fontWeight: "bold" }}
-            color={colors.onSurface}
-          >
-            Kategori
-          </Text>
-          <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
-            {RECEIPT_CATEGORIES.map((c) => (
-              <SegmentedButton
-                key={c.key}
-                selected={category === c.key}
-                onClick={() => setCategory(c.key)}
-              >
-                <SegmentedButton.Label>
-                  <Text>{c.shortLabel}</Text>
-                </SegmentedButton.Label>
-              </SegmentedButton>
-            ))}
-          </SingleChoiceSegmentedButtonRow>
-        </Column>
-
-        <OutlinedTextField
-          singleLine
-          onValueChange={setAmount}
-          keyboardOptions={{ keyboardType: "number" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Nominal (Rp)</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <Column verticalArrangement={{ spacedBy: 8 }}>
-          <Text
-            style={{ typography: "labelMedium", fontWeight: "bold" }}
-            color={colors.onSurface}
-          >
-            Foto kwitansi
-          </Text>
-          <OutlinedCard
-            border={{ width: 2, color: colors.outline }}
-            colors={{ containerColor: colors.surfaceContainerLow }}
-            modifiers={[fillMaxWidth(), clickable(handlePickReceipt)]}
-          >
-            <Column
-              horizontalAlignment="center"
-              verticalArrangement={{ spacedBy: 12 }}
-              modifiers={[fillMaxWidth(), padding(18, 26, 18, 26)]}
+        <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
+          {RECEIPT_CATEGORIES.map((c) => (
+            <SegmentedButton
+              key={c.key}
+              selected={category === c.key}
+              onClick={() => setCategory(c.key)}
             >
-              {uploading ? (
-                <CircularWavyProgressIndicator
-                  color={colors.primary}
-                  modifiers={[size(32, 32)]}
-                />
-              ) : docs ? (
-                <>
-                  <Box
-                    contentAlignment="center"
-                    modifiers={[
-                      size(140, 140),
-                      clip(Shapes.RoundedCorner(16)),
-                      background(colors.surfaceContainerHighest),
-                    ]}
-                  >
-                    <RNHostView>
-                      <Image
-                        source={{ uri: docs }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                        onLoad={() => setLoadedDocs(docs)}
-                      />
-                    </RNHostView>
-                    {loadedDocs !== docs && (
-                      <CircularWavyProgressIndicator
-                        color={colors.primary}
-                        modifiers={[size(28, 28)]}
-                      />
-                    )}
-                  </Box>
-                  <Text
-                    style={{ typography: "bodyMedium", fontWeight: "600" }}
-                    color={colors.onSurface}
-                  >
-                    Foto terunggah · ketuk untuk ganti
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Icon source={Receipt} tint={colors.primary} size={48} />
-                  <Text
-                    style={{ typography: "bodyMedium", fontWeight: "600" }}
-                    color={colors.onSurface}
-                  >
-                    Unggah foto kwitansi
-                  </Text>
-                  <Text
-                    style={{ typography: "bodySmall", textAlign: "center" }}
-                    color={colors.onSurfaceVariant}
-                  >
-                    Foto struk atau tagihan dari galeri kamu.
-                  </Text>
-                </>
-              )}
-            </Column>
-          </OutlinedCard>
-        </Column>
-
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
-            <Text style={{ typography: "labelLarge" }} color={colors.primary}>
-              Batal
-            </Text>
-          </OutlinedButton>
-          <Button
-            enabled={canSave && !saving}
-            onClick={handleSave}
-            modifiers={[weight(1)]}
-          >
-            <ButtonContent
-              loading={saving}
-              enabled={canSave}
-              label="Simpan Kwitansi"
-              color={colors.onPrimary}
-            />
-          </Button>
-        </Row>
+              <SegmentedButton.Label>
+                <Text>{c.shortLabel}</Text>
+              </SegmentedButton.Label>
+            </SegmentedButton>
+          ))}
+        </SingleChoiceSegmentedButtonRow>
       </Column>
-    </ModalBottomSheet>
+
+      <FormField
+        label="Nominal (Rp)"
+        singleLine
+        onValueChange={setAmount}
+        keyboardOptions={{ keyboardType: "number" }}
+      />
+
+      <Column verticalArrangement={{ spacedBy: 8 }}>
+        <Text
+          style={{ typography: "labelMedium", fontWeight: "bold" }}
+          color={colors.onSurface}
+        >
+          Foto kwitansi
+        </Text>
+        <OutlinedCard
+          border={{ width: 2, color: colors.outline }}
+          colors={{ containerColor: colors.surfaceContainerLow }}
+          modifiers={[fillMaxWidth(), clickable(handlePickReceipt)]}
+        >
+          <Column
+            horizontalAlignment="center"
+            verticalArrangement={{ spacedBy: 12 }}
+            modifiers={[fillMaxWidth(), padding(18, 26, 18, 26)]}
+          >
+            {uploading ? (
+              <CircularWavyProgressIndicator
+                color={colors.primary}
+                modifiers={[size(32, 32)]}
+              />
+            ) : docs ? (
+              <>
+                <Box
+                  contentAlignment="center"
+                  modifiers={[
+                    size(140, 140),
+                    clip(Shapes.RoundedCorner(16)),
+                    background(colors.surfaceContainerHighest),
+                  ]}
+                >
+                  <RNHostView>
+                    <Image
+                      source={{ uri: docs }}
+                      style={{ width: "100%", height: "100%" }}
+                      resizeMode="cover"
+                      onLoad={() => setLoadedDocs(docs)}
+                    />
+                  </RNHostView>
+                  {loadedDocs !== docs && (
+                    <CircularWavyProgressIndicator
+                      color={colors.primary}
+                      modifiers={[size(28, 28)]}
+                    />
+                  )}
+                </Box>
+                <Text
+                  style={{ typography: "bodyMedium", fontWeight: "600" }}
+                  color={colors.onSurface}
+                >
+                  Foto terunggah · ketuk untuk ganti
+                </Text>
+              </>
+            ) : (
+              <>
+                <Icon source={Receipt} tint={colors.primary} size={48} />
+                <Text
+                  style={{ typography: "bodyMedium", fontWeight: "600" }}
+                  color={colors.onSurface}
+                >
+                  Unggah foto kwitansi
+                </Text>
+                <Text
+                  style={{ typography: "bodySmall", textAlign: "center" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Foto struk atau tagihan dari galeri kamu.
+                </Text>
+              </>
+            )}
+          </Column>
+        </OutlinedCard>
+      </Column>
+
+      <SheetActions
+        onCancel={onClose}
+        onSubmit={handleSave}
+        submitLabel="Simpan Kwitansi"
+        enabled={canSave}
+        loading={saving}
+      />
+    </FormSheet>
   );
 }
 
@@ -302,7 +267,7 @@ export function ReceiptDetailSheet({
   onClose: () => void;
   onDeleted: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const [imageLoaded, setImageLoaded] = useState(false);
   const [deleting, setDeleting] = useState(false);
 

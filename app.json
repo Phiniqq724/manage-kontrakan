@@ -2,13 +2,12 @@
   "expo": {
     "name": "Semanggi",
     "slug": "manage-kontrakan",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/semanggi-icon.png",
     "scheme": "managekontrakan",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
       "bundleIdentifier": "com.sandy.managekontrakan"
     },
     "android": {
@@ -23,7 +22,6 @@
       "package": "com.sandy.managekontrakan",
       "googleServicesFile": "./google-services.json",
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.REQUEST_INSTALL_PACKAGES"
       ]
     },
@@ -54,7 +52,6 @@
       ],
       "expo-sqlite",
       "expo-system-ui",
-      "@react-native-community/datetimepicker",
       [
         "expo-image-picker",
         {
@@ -69,7 +66,12 @@
         }
       ],
       "./plugins/withAndroidMonochromeVector.js",
-      "expo-secure-store"
+      "./plugins/withDynamicColorIcon.js",
+      "expo-secure-store",
+      "expo-font",
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,

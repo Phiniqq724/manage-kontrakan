@@ -1,3 +1,5 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
 import {
   formatRupiah,
   receiptCategoryInfo,
@@ -6,25 +8,20 @@ import {
   type ReceiptRow,
 } from "@/components/ReceiptSheets";
 import { receiptsApi, usersApi } from "@/services/api";
+import { useHideOnScroll, useTabAction } from "@/utils/tab-action";
 import { useAuth } from "@/utils/auth-context";
 import Add from "@expo/material-symbols/add.xml";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import Receipt from "@expo/material-symbols/receipt.xml";
-import { Host } from "@expo/ui";
 import {
   Box,
   Card,
-  ExtendedFloatingActionButton,
   Icon,
-  IconButton,
   PullToRefreshBox,
   Column,
   Row,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
-  align,
   background,
   clickable,
   clip,
@@ -34,10 +31,8 @@ import {
   paddingAll,
   Shapes,
   size,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 
 const firstName = (fullname: string) => fullname.split(" ")[0] ?? fullname;
@@ -51,7 +46,8 @@ type MonthGroup = {
 
 export default function ReceiptsScreen() {
   const { user } = useAuth();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
+  const hideOnScroll = useHideOnScroll();
   const isAdmin = user?.role === "admin";
 
   const [receipts, setReceipts] = useState<ReceiptRow[]>([]);
@@ -60,6 +56,7 @@ export default function ReceiptsScreen() {
   );
   const [refreshing, setRefreshing] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  useTabAction("receipts", Add, () => setFormOpen(true), isAdmin);
   const [selected, setSelected] = useState<ReceiptRow | null>(null);
 
   useEffect(() => {
@@ -104,7 +101,7 @@ export default function ReceiptsScreen() {
   })();
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <Box modifiers={[fillMaxSize()]}>
         <PullToRefreshBox
           isRefreshing={refreshing}
@@ -116,8 +113,8 @@ export default function ReceiptsScreen() {
             verticalArrangement={{ spacedBy: 24 }}
             modifiers={[
               fillMaxSize(),
-              verticalScroll(),
-              padding(16, 56, 16, 32),
+              hideOnScroll,
+              padding(16, 56, 16, 120),
             ]}
           >
             <Row
@@ -125,9 +122,7 @@ export default function ReceiptsScreen() {
               horizontalArrangement={{ spacedBy: 4 }}
               modifiers={[fillMaxWidth()]}
             >
-              <IconButton onClick={() => router.back()}>
-                <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-              </IconButton>
+              <BackButton />
               <Column
                 verticalArrangement={{ spacedBy: 2 }}
                 modifiers={[weight(1)]}
@@ -286,21 +281,6 @@ export default function ReceiptsScreen() {
           </Column>
         </PullToRefreshBox>
 
-        {isAdmin && (
-          <ExtendedFloatingActionButton
-            onClick={() => setFormOpen(true)}
-            modifiers={[align("bottomEnd"), padding(0, 0, 20, 24)]}
-          >
-            <ExtendedFloatingActionButton.Icon>
-              <Icon source={Add} size={20} />
-            </ExtendedFloatingActionButton.Icon>
-            <ExtendedFloatingActionButton.Text>
-              <Text style={{ typography: "labelLarge", fontWeight: "bold" }}>
-                Tambah Kwitansi
-              </Text>
-            </ExtendedFloatingActionButton.Text>
-          </ExtendedFloatingActionButton>
-        )}
       </Box>
 
       {formOpen && user && (
@@ -330,6 +310,6 @@ export default function ReceiptsScreen() {
           }}
         />
       )}
-    </Host>
+    </AppHost>
   );
 }

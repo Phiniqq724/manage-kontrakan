@@ -1,7 +1,7 @@
+import { useAppColors } from "@/components/AppHost";
 import {
   CircularWavyProgressIndicator,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import { size } from "@expo/ui/jetpack-compose/modifiers";
 
@@ -19,7 +19,7 @@ export function ButtonContent({
   enabled?: boolean;
   bold?: boolean;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const effectiveColor = enabled && !loading ? color : colors.outline;
 
   if (loading) {

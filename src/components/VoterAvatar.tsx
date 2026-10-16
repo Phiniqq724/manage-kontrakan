@@ -1,9 +1,9 @@
+import { useAppColors } from "@/components/AppHost";
 import type { Database } from "@/utils/supabase-types";
 import {
   Box,
   RNHostView,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import { background, clip, Shapes, size } from "@expo/ui/jetpack-compose/modifiers";
 import { Image } from "react-native";
@@ -13,11 +13,14 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
 export function VoterAvatar({
   user,
   diameter,
+  ring,
 }: {
   user: UserRow;
   diameter: number;
+  /** Ring colour; match the surface the avatar sits on. */
+  ring?: string;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const radius = diameter / 2;
   const ringSize = diameter + 4;
 
@@ -55,7 +58,7 @@ export function VoterAvatar({
       modifiers={[
         size(ringSize, ringSize),
         clip(Shapes.RoundedCorner(ringSize / 2)),
-        background(colors.background),
+        background(ring ?? colors.background),
       ]}
     >
       {inner}

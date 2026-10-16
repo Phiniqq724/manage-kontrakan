@@ -1,5 +1,5 @@
 import { eventVotesApi, eventsApi } from "../services/api";
-import { getAllTokensExcept, sendPushNotification } from "./notifications";
+import { sendPush } from "./notifications";
 import type { Database } from "./supabase-types";
 
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
@@ -15,17 +15,13 @@ export async function createEventAndNotify(
   });
   if (error) throw error;
 
-  const tokens = await getAllTokensExcept(creator.id);
-  await Promise.all(
-    tokens.map((token) =>
-      sendPushNotification(
-        token,
-        "Acara Baru",
-        `${creator.fullname} membuat acara baru: ${input.name}`,
-        { data: { eventId: data.id } },
-      ),
-    ),
-  );
+  await sendPush({
+    recipients: "all_except_me",
+    type: "event",
+    title: "Acara Baru",
+    body: `${creator.fullname} membuat acara baru: ${input.name}`,
+    data: { eventId: data.id },
+  });
   return data;
 }
 

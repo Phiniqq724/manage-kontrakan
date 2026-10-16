@@ -1,28 +1,25 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
+import { useHideOnScroll } from "@/utils/tab-action";
 import { ButtonContent } from "@/components/ButtonContent";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import {
   formatPaymentPeriod,
   StatusBadge,
   type PaymentRow,
 } from "@/components/PaymentsSheets";
 import { paymentsApi, usersApi } from "@/services/api";
-import { sendPushNotification } from "@/utils/notifications";
+import { sendPush } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
-import { Host } from "@expo/ui";
 import {
   Box,
   Button,
   Column,
   HorizontalDivider,
-  Icon,
-  IconButton,
-  ModalBottomSheet,
-  OutlinedButton,
   PullToRefreshBox,
   RNHostView,
   Row,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -33,10 +30,8 @@ import {
   height,
   padding,
   Shapes,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image } from "react-native";
 
@@ -46,7 +41,8 @@ const DUE_DAY = 10;
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 export default function AdminPaymentsScreen() {
-  const colors = useMaterialColors();
+  const hideOnScroll = useHideOnScroll();
+  const colors = useAppColors();
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
   const [selected, setSelected] = useState<PaymentRow | null>(null);
@@ -99,19 +95,22 @@ export default function AdminPaymentsScreen() {
       if (error) throw error;
 
       const payer = selected.paid_by ? users[selected.paid_by] : null;
-      if (payer?.push_token) {
+      if (payer) {
         const period = formatPaymentPeriod(selected.period);
-        await sendPushNotification(
-          payer.push_token,
-          action === "approve"
-            ? "Pembayaran Dikonfirmasi"
-            : "Pembayaran Ditolak",
-          action === "approve"
-            ? finalStatus === "on_time"
-              ? `Pembayaran ${period} kamu dikonfirmasi. Tepat waktu!`
-              : `Pembayaran ${period} kamu dikonfirmasi. Namun tercatat terlambat.`
-            : `Pembayaran ${period} kamu ditolak. Silakan upload ulang bukti transfer.`,
-        );
+        await sendPush({
+          recipients: [payer.id],
+          type: "payment",
+          title:
+            action === "approve"
+              ? "Pembayaran Dikonfirmasi"
+              : "Pembayaran Ditolak",
+          body:
+            action === "approve"
+              ? finalStatus === "on_time"
+                ? `Pembayaran ${period} kamu dikonfirmasi. Tepat waktu!`
+                : `Pembayaran ${period} kamu dikonfirmasi. Namun tercatat terlambat.`
+              : `Pembayaran ${period} kamu ditolak. Silakan upload ulang bukti transfer.`,
+        });
       }
 
       setSelected(null);
@@ -149,13 +148,12 @@ export default function AdminPaymentsScreen() {
             status: "waiting_payment",
           });
           if (createError) throw createError;
-          if (u.push_token) {
-            await sendPushNotification(
-              u.push_token,
-              "Tagihan Bulan Ini Tersedia",
-              `Tagihan sewa ${formatPaymentPeriod(period)} sebesar Rp ${BILL_AMOUNT.toLocaleString("id-ID")} sudah tersedia.`,
-            );
-          }
+          await sendPush({
+            recipients: [u.id],
+            type: "payment",
+            title: "Tagihan Bulan Ini Tersedia",
+            body: `Tagihan sewa ${formatPaymentPeriod(period)} sebesar Rp ${BILL_AMOUNT.toLocaleString("id-ID")} sudah tersedia.`,
+          });
           created++;
         }
       }
@@ -169,7 +167,7 @@ export default function AdminPaymentsScreen() {
   const pendingCount = payments.filter((p) => p.status === "pending").length;
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -178,16 +176,14 @@ export default function AdminPaymentsScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 20 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           <Row
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 4 }}
             modifiers={[fillMaxWidth()]}
           >
-            <IconButton onClick={() => router.back()}>
-              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-            </IconButton>
+            <BackButton />
             <Column
               verticalArrangement={{ spacedBy: 2 }}
               modifiers={[weight(1)]}
@@ -276,89 +272,52 @@ export default function AdminPaymentsScreen() {
       </PullToRefreshBox>
 
       {selected && (
-        <ModalBottomSheet onDismissRequest={() => setSelected(null)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              padding(24, 8, 24, 32),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                Konfirmasi pembayaran
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                {`${users[selected.paid_by ?? ""]?.fullname ?? "Unknown"} · ${formatPaymentPeriod(selected.period)}`}
-              </Text>
-            </Column>
+        <FormSheet
+          title="Konfirmasi pembayaran"
+          subtitle={`${users[selected.paid_by ?? ""]?.fullname ?? "Unknown"} · ${formatPaymentPeriod(selected.period)}`}
+          onClose={() => setSelected(null)}
+        >
+          <StatusBadge status={selected.status} />
 
-            <StatusBadge status={selected.status} />
+          <HorizontalDivider color={colors.outlineVariant} />
 
-            <HorizontalDivider color={colors.outlineVariant} />
-
-            {selected.docs ? (
-              <Box
-                modifiers={[
-                  fillMaxWidth(),
-                  height(220),
-                  clip(Shapes.RoundedCorner(12)),
-                  background(colors.surfaceContainerHighest),
-                ]}
-              >
-                <RNHostView>
-                  <Image
-                    source={{ uri: selected.docs }}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="contain"
-                  />
-                </RNHostView>
-              </Box>
-            ) : (
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                Tidak ada bukti terlampir.
-              </Text>
-            )}
-
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement={{ spacedBy: 12 }}
-              modifiers={[fillMaxWidth()]}
+          {selected.docs ? (
+            <Box
+              modifiers={[
+                fillMaxWidth(),
+                height(220),
+                clip(Shapes.RoundedCorner(12)),
+                background(colors.surfaceContainerHighest),
+              ]}
             >
-              <OutlinedButton
-                enabled={!processing}
-                onClick={() => handleConfirm("reject")}
-                modifiers={[weight(1)]}
-              >
-                <Text style={{ typography: "labelLarge" }} color={colors.error}>
-                  Tolak
-                </Text>
-              </OutlinedButton>
-              <Button
-                enabled={!processing}
-                onClick={() => handleConfirm("approve")}
-                modifiers={[weight(1)]}
-              >
-                <ButtonContent
-                  loading={processing}
-                  label="Konfirmasi"
-                  color={colors.onPrimary}
+              <RNHostView>
+                <Image
+                  source={{ uri: selected.docs }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
                 />
-              </Button>
-            </Row>
-          </Column>
-        </ModalBottomSheet>
+              </RNHostView>
+            </Box>
+          ) : (
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurfaceVariant}
+            >
+              Tidak ada bukti terlampir.
+            </Text>
+          )}
+
+          <SheetActions
+            onCancel={() => handleConfirm("reject")}
+            cancelLabel="Tolak"
+            destructiveCancel
+            onSubmit={() => handleConfirm("approve")}
+            submitLabel="Konfirmasi"
+            enabled={!processing}
+            loading={processing}
+          />
+        </FormSheet>
       )}
-    </Host>
+    </AppHost>
   );
 }

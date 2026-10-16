@@ -1,8 +1,8 @@
-# Naungi — Kontrakan Management App
+# Semanggi — Kontrakan Management App
 
 > *Rumah bersama, tertib bersama.*
 
-Naungi is an internal [Expo](https://expo.dev) (React Native) application for managing a shared rented house (*kontrakan*) of 5 members. It centralizes billing, chores (*piket*), guest logging, house rules, and member contacts so everything the household needs is transparent and in one place — instead of scattered across chat threads and spreadsheets.
+Semanggi is an internal [Expo](https://expo.dev) (React Native) application for managing a shared rented house (*kontrakan*) of 5 members. It centralizes billing, chores (*piket*), guest logging, house rules, and member contacts so everything the household needs is transparent and in one place — instead of scattered across chat threads and spreadsheets.
 
 ## Features
 
@@ -24,14 +24,14 @@ Naungi is an internal [Expo](https://expo.dev) (React Native) application for ma
 
 **Platform**
 - Email/password authentication via Supabase Auth
-- Push notifications (Expo Notifications) — e.g. notifying the admin of new activity
+- Push notifications (Expo Notifications), sent server-side through the `send-push` Supabase Edge Function
 - Role-based navigation (member vs. admin) via `expo-router`
 
 ## Tech Stack
 
 | Layer | Choice |
 |---|---|
-| Framework | [Expo](https://docs.expo.dev/versions/v56.0.0/) SDK 56 (React Native 0.85, React 19) |
+| Framework | [Expo](https://docs.expo.dev/versions/v57.0.0/) SDK 57 (React Native 0.86, React 19) |
 | Routing | `expo-router` (file-based, typed routes) |
 | Language | TypeScript |
 | Styling | React Native `StyleSheet` |
@@ -39,20 +39,24 @@ Naungi is an internal [Expo](https://expo.dev) (React Native) application for ma
 | Backend | [Supabase](https://supabase.com) (PostgreSQL, Auth, Storage) |
 | Notifications | `expo-notifications` |
 
-> **Note:** This project targets Expo SDK 56, which changed significantly from earlier SDKs. Always check the [versioned SDK 56 docs](https://docs.expo.dev/versions/v56.0.0/) rather than relying on general Expo knowledge.
+> **Note:** This project targets Expo SDK 57. Always check the [versioned SDK 57 docs](https://docs.expo.dev/versions/v57.0.0/) rather than relying on general Expo knowledge.
 
 ## Project Structure
 
 ```
 src/
-├── app/            # expo-router routes (screens)
-│   ├── (tabs)/      # member-facing tab navigation (dashboard, guests, piket, rules, profile, members)
-│   ├── admin/       # admin-only screens (kamar, members, payments, reports, rules, passwords)
-│   └── auth/        # login
-├── components/     # Reusable UI elements
-├── constants/      # Theme tokens (colors, spacing, font sizes, etc.)
-├── services/       # Supabase-backed API layer (one module per table: kamar, users, pikets, payments, guests, rules, reports, ...)
-└── utils/          # Supabase client, auth helpers/context, push notifications, piket scheduling logic
+├── app/          # expo-router routes (screens)
+│   ├── (tabs)/   # member-facing tab navigation
+│   ├── admin/    # admin-only screens
+│   └── auth/     # login
+├── components/   # Reusable UI elements
+├── services/     # Supabase-backed API layer (api.ts)
+├── assets/       # Fonts and icons
+└── utils/        # Supabase client, auth, notifications, uploads, piket logic, app updates
+assets/           # App icons referenced by app.json
+supabase/
+├── functions/    # Supabase Edge Functions
+└── migrations/   # SQL migrations
 ```
 
 ## Getting Started
@@ -103,7 +107,7 @@ From the Metro output you can open the app in:
 | `npm run ios` | Build and run on an iOS device/simulator |
 | `npm run web` | Run the web build |
 | `npm run lint` | Lint the project (`expo lint`) |
-| `npm run reset-project` | Move starter code aside and reset to a blank `app/` directory |
+| `npm test` | Run the Jest unit tests (`jest-expo` preset) |
 
 ## Quality Checks
 
@@ -112,11 +116,12 @@ Before submitting any change, run:
 ```bash
 npx expo-doctor   # validates dependencies, config, and native project sync
 npx tsc --noEmit  # type-checks the project
+npm test          # runs the Jest unit tests
 ```
 
 ## Database
 
-The app uses Supabase/PostgreSQL with tables including `users`, `kamar` (rooms), `pikets` / `piket_requests` (chore schedule and swap requests), `payments`, `guests`, `rules` / `rule_requests`, and `reports`. Row types and API bindings are generated/maintained in `src/utils/supabase-types.ts` and `src/services/api.ts`.
+The app uses Supabase/PostgreSQL with tables including `users`, `kamar` (rooms), `pikets` / `piket_requests` (chore schedule and swap requests), `payments`, `guests`, `rules` / `rule_requests`, and `reports`. Row types and API bindings are generated/maintained in `src/utils/supabase-types.ts` and `src/services/api.ts`. SQL migrations live in `supabase/migrations/`.
 
 ## Contributing
 

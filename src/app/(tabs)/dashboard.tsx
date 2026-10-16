@@ -1,4 +1,9 @@
-import { isPayable, PayFormSheet } from "@/components/PaymentsSheets";
+import { AppHost, useAppColors } from "@/components/AppHost";
+import {
+  isPayable,
+  PAYMENT_STATUS_LABEL,
+  PayFormSheet,
+} from "@/components/PaymentsSheets";
 import {
   guestsApi,
   paymentsApi,
@@ -7,22 +12,20 @@ import {
   ruleRequestVotesApi,
   usersApi,
 } from "@/services/api";
+import { ProfileMenu } from "@/components/ProfileMenu";
+import { pagerRoute } from "@/utils/pager";
+import { QuickActionRows, QuickActionTile } from "@/components/QuickActions";
 import { useAuth } from "@/utils/auth-context";
-import { sendPushNotification } from "@/utils/notifications";
+import { QUICK_ACTIONS, useNavItems, useQuickActions } from "@/utils/settings";
+import { useHideOnScroll } from "@/utils/tab-action";
+import { sendPush } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import BugReport from "@expo/material-symbols/bug_report.xml";
 import CheckCircle from "@expo/material-symbols/check_circle.xml";
-import ReceiptLong from "@expo/material-symbols/receipt_long.xml";
 import Description from "@expo/material-symbols/description.xml";
-import Event from "@expo/material-symbols/event.xml";
-import Forum from "@expo/material-symbols/forum.xml";
-import Notifications from "@expo/material-symbols/notifications.xml";
 import PersonAdd from "@expo/material-symbols/person_add.xml";
-import Receipt from "@expo/material-symbols/receipt.xml";
-import { Host } from "@expo/ui";
 import {
   Badge,
-  BadgedBox,
   Box,
   Button,
   Card,
@@ -31,10 +34,8 @@ import {
   IconButton,
   OutlinedButton,
   PullToRefreshBox,
-  RNHostView,
   Row,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -46,13 +47,12 @@ import {
   paddingAll,
   Shapes,
   size,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, type Href } from "expo-router";
 import { useCallback, useState } from "react";
 import type { ImageSourcePropType } from "react-native";
-import { Alert, Image, Pressable } from "react-native";
+import { Alert } from "react-native";
 
 type PaymentRow = Database["public"]["Tables"]["payments"]["Row"];
 type PiketRow = Database["public"]["Tables"]["pikets"]["Row"];
@@ -114,8 +114,11 @@ function greeting() {
 }
 
 export default function DashboardScreen() {
+  const hideOnScroll = useHideOnScroll();
+  const { keys: quickActions } = useQuickActions();
+  const { keys: navKeys } = useNavItems();
   const { user } = useAuth();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
 
   const [refreshing, setRefreshing] = useState(false);
   const [payment, setPayment] = useState<PaymentRow | null>(null);
@@ -268,18 +271,12 @@ export default function DashboardScreen() {
   };
 
   const sendTestNotification = async () => {
-    if (!user?.push_token) {
-      Alert.alert(
-        "Tidak ada push token",
-        "Belum ada push token tersimpan untuk akun ini.",
-      );
-      return;
-    }
-    await sendPushNotification(
-      user.push_token,
-      "Notifikasi tes",
-      "Ini notifikasi tes dari dev button.",
-    );
+    if (!user) return;
+    await sendPush({
+      recipients: [user.id],
+      title: "Notifikasi tes",
+      body: "Ini notifikasi tes dari dev button.",
+    });
     Alert.alert("Terkirim", "Notifikasi tes sudah dikirim.");
   };
 
@@ -291,7 +288,7 @@ export default function DashboardScreen() {
     : null;
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -300,7 +297,7 @@ export default function DashboardScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 24 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           {/* Header */}
           <Row
@@ -335,43 +332,7 @@ export default function DashboardScreen() {
                   />
                 </IconButton>
               )}
-              <IconButton onClick={() => router.push("/changelog" as any)}>
-                <Icon
-                  source={Notifications}
-                  tint={colors.onSurfaceVariant}
-                  size={22}
-                />
-              </IconButton>
-              {user?.avatar_url ? (
-                <Box modifiers={[size(40, 40), clip(Shapes.RoundedCorner(20))]}>
-                  <RNHostView>
-                    <Pressable onPress={() => router.push("/profile" as any)}>
-                      <Image
-                        source={{ uri: user.avatar_url }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="cover"
-                      />
-                    </Pressable>
-                  </RNHostView>
-                </Box>
-              ) : (
-                <Box
-                  contentAlignment="center"
-                  modifiers={[
-                    size(40, 40),
-                    clip(Shapes.RoundedCorner(20)),
-                    background(colors.primaryContainer),
-                    clickable(() => router.push("/profile" as any)),
-                  ]}
-                >
-                  <Text
-                    style={{ typography: "titleMedium", fontWeight: "bold" }}
-                    color={colors.onPrimaryContainer}
-                  >
-                    {user?.fullname?.[0]?.toUpperCase() ?? "?"}
-                  </Text>
-                </Box>
-              )}
+              <ProfileMenu />
             </Row>
           </Row>
 
@@ -425,12 +386,27 @@ export default function DashboardScreen() {
                 style={{ typography: "headlineLarge", fontWeight: "bold" }}
                 color={colors.onPrimary}
               >
-                {payment?.amount != null
-                  ? formatRupiah(payment.amount)
-                  : "Belum ada tagihan"}
+                {!payment || payment.amount == null
+                  ? "Belum ada tagihan"
+                  : isPayable(payment.status)
+                    ? formatRupiah(payment.amount)
+                    : payment.status === "pending"
+                      ? "Menunggu konfirmasi"
+                      : "Lunas"}
               </Text>
 
-              {payment?.due_date && (
+              {payment && !isPayable(payment.status) && (
+                <Text
+                  style={{ typography: "bodyMedium" }}
+                  color={withAlpha(colors.onPrimary, "CC")}
+                >
+                  {payment.status === "pending"
+                    ? `${formatRupiah(payment.amount ?? 0)} · bukti sedang dicek admin`
+                    : `${formatRupiah(payment.amount ?? 0)} · ${PAYMENT_STATUS_LABEL[payment.status] ?? payment.status}`}
+                </Text>
+              )}
+
+              {payment?.due_date && isPayable(payment.status) && (
                 <Text
                   style={{ typography: "bodyMedium" }}
                   color={withAlpha(colors.onPrimary, "CC")}
@@ -459,32 +435,22 @@ export default function DashboardScreen() {
             </Column>
           </Card>
 
-          {/* Quick actions */}
-          <Row
-            horizontalArrangement="spaceBetween"
-            modifiers={[fillMaxWidth()]}
-          >
-            <QuickAction
-              icon={ReceiptLong}
-              label="Split Bill"
-              onClick={() => router.push("/split-bill" as any)}
-            />
-            <QuickAction
-              icon={Event}
-              label="Event"
-              onClick={() => router.push("/events" as any)}
-            />
-            <QuickAction
-              icon={Forum}
-              label="Request"
-              onClick={() => router.push("/requests" as any)}
-            />
-            <QuickAction
-              icon={Receipt}
-              label="Kwitansi"
-              onClick={() => router.push("/receipts" as any)}
-            />
-          </Row>
+          {/* Quick actions (chosen per account in Pengaturan) */}
+          <QuickActionRows
+            keys={quickActions}
+            tile={(key) => (
+              <QuickActionTile
+                key={key}
+                actionKey={key}
+                onClick={() =>
+                  // In the navbar: switch the swiper to it; otherwise open the page.
+                  navKeys.includes(key)
+                    ? router.navigate(`/(tabs)/${pagerRoute(key)}` as Href)
+                    : router.push(QUICK_ACTIONS[key].href as Href)
+                }
+              />
+            )}
+          />
 
           {/* Perlu perhatian */}
           <Column verticalArrangement={{ spacedBy: 12 }}>
@@ -602,64 +568,12 @@ export default function DashboardScreen() {
           }}
         />
       )}
-    </Host>
-  );
-}
-
-function QuickAction({
-  icon,
-  label,
-  badge,
-  onClick,
-}: {
-  icon: ImageSourcePropType;
-  label: string;
-  badge?: number;
-  onClick: () => void;
-}) {
-  const colors = useMaterialColors();
-  const iconTile = (
-    <Box
-      contentAlignment="center"
-      modifiers={[
-        size(56, 56),
-        clip(Shapes.RoundedCorner(16)),
-        background(colors.primaryContainer),
-        clickable(onClick),
-      ]}
-    >
-      <Icon source={icon} tint={colors.onPrimaryContainer} size={24} />
-    </Box>
-  );
-
-  return (
-    <Column horizontalAlignment="center" verticalArrangement={{ spacedBy: 6 }}>
-      {badge ? (
-        <BadgedBox>
-          {iconTile}
-          <BadgedBox.Badge>
-            <Badge containerColor={colors.error}>
-              <Text style={{ typography: "labelSmall" }} color={colors.onError}>
-                {String(badge)}
-              </Text>
-            </Badge>
-          </BadgedBox.Badge>
-        </BadgedBox>
-      ) : (
-        iconTile
-      )}
-      <Text
-        style={{ typography: "labelMedium" }}
-        color={colors.onSurfaceVariant}
-      >
-        {label}
-      </Text>
-    </Column>
+    </AppHost>
   );
 }
 
 function AttentionCard({ item }: { item: AttentionItem }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
 
   return (
     <Card
@@ -728,13 +642,13 @@ function AttentionCard({ item }: { item: AttentionItem }) {
         </Column>
 
         {item.type === "piket" ? (
-          <OutlinedButton onClick={() => router.push("/(tabs)/piket" as any)}>
+          <OutlinedButton onClick={() => router.push("/piket")}>
             <Text style={{ typography: "labelLarge" }} color={colors.primary}>
               Izin
             </Text>
           </OutlinedButton>
         ) : (
-          <Button onClick={() => router.push("/(tabs)/rules" as any)}>
+          <Button onClick={() => router.push("/rules")}>
             <Text
               style={{ typography: "labelLarge", fontWeight: "bold" }}
               color={colors.onPrimary}

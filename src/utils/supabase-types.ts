@@ -424,6 +424,7 @@ export type Database = {
           modified_at: string | null
           piket_id: string | null
           reason: string | null
+          requested_by: string | null
           status: string
         }
         Insert: {
@@ -433,6 +434,7 @@ export type Database = {
           modified_at?: string | null
           piket_id?: string | null
           reason?: string | null
+          requested_by?: string | null
           status?: string
         }
         Update: {
@@ -442,6 +444,7 @@ export type Database = {
           modified_at?: string | null
           piket_id?: string | null
           reason?: string | null
+          requested_by?: string | null
           status?: string
         }
         Relationships: [
@@ -511,6 +514,42 @@ export type Database = {
             foreignKeyName: "pikets_assign_to_fkey"
             columns: ["assign_to"]
             isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_tokens: {
+        Row: {
+          muted_types: string[]
+          token: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          muted_types?: string[]
+          token: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          muted_types?: string[]
+          token?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
             referencedRelation: "users_public"
             referencedColumns: ["id"]
           },
@@ -1011,7 +1050,6 @@ export type Database = {
           fullname: string
           id: string
           modified_at: string | null
-          password: string
           push_token: string | null
           role: string
           username: string
@@ -1024,7 +1062,6 @@ export type Database = {
           fullname: string
           id?: string
           modified_at?: string | null
-          password: string
           push_token?: string | null
           role?: string
           username: string
@@ -1037,7 +1074,6 @@ export type Database = {
           fullname?: string
           id?: string
           modified_at?: string | null
-          password?: string
           push_token?: string | null
           role?: string
           username?: string

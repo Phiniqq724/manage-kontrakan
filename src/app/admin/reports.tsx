@@ -1,21 +1,19 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
+import { useHideOnScroll } from "@/utils/tab-action";
 import { reportsApi, usersApi } from "@/services/api";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import type { Database } from "@/utils/supabase-types";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import AttachFile from "@expo/material-symbols/attach_file.xml";
-import { Host } from "@expo/ui";
 import {
   Box,
   Column,
   HorizontalDivider,
   Icon,
-  IconButton,
-  ModalBottomSheet,
-  OutlinedButton,
   PullToRefreshBox,
   RNHostView,
   Row,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -26,10 +24,8 @@ import {
   height,
   padding,
   Shapes,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { Image } from "react-native";
 
@@ -37,7 +33,8 @@ type ReportRow = Database["public"]["Tables"]["reports"]["Row"];
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 export default function AdminReportsScreen() {
-  const colors = useMaterialColors();
+  const hideOnScroll = useHideOnScroll();
+  const colors = useAppColors();
   const [reports, setReports] = useState<ReportRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
   const [selected, setSelected] = useState<ReportRow | null>(null);
@@ -71,7 +68,7 @@ export default function AdminReportsScreen() {
   };
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -80,16 +77,14 @@ export default function AdminReportsScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 16 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           <Row
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 4 }}
             modifiers={[fillMaxWidth()]}
           >
-            <IconButton onClick={() => router.back()}>
-              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-            </IconButton>
+            <BackButton />
             <Column
               verticalArrangement={{ spacedBy: 2 }}
               modifiers={[weight(1)]}
@@ -186,76 +181,46 @@ export default function AdminReportsScreen() {
       </PullToRefreshBox>
 
       {selected && (
-        <ModalBottomSheet onDismissRequest={() => setSelected(null)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              padding(24, 8, 24, 32),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                {selected.title}
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                {selected.suspect
+        <FormSheet
+          title={selected.title}
+          subtitle={selected.suspect
                   ? `${users[selected.created_by ?? ""]?.fullname ?? "Unknown"} melaporkan ${users[selected.suspect]?.fullname ?? "Unknown"}`
                   : `Laporan umum dari ${users[selected.created_by ?? ""]?.fullname ?? "Unknown"}`}
-              </Text>
-            </Column>
+          onClose={() => setSelected(null)}
+        >
+          <HorizontalDivider color={colors.outlineVariant} />
 
-            <HorizontalDivider color={colors.outlineVariant} />
-
-            {selected.description && (
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurface}
-              >
-                {selected.description}
-              </Text>
-            )}
-
-            {selected.docs && (
-              <Box
-                modifiers={[
-                  fillMaxWidth(),
-                  height(220),
-                  clip(Shapes.RoundedCorner(12)),
-                  background(colors.surfaceContainerHighest),
-                ]}
-              >
-                <RNHostView>
-                  <Image
-                    source={{ uri: selected.docs }}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="contain"
-                  />
-                </RNHostView>
-              </Box>
-            )}
-
-            <OutlinedButton
-              onClick={() => setSelected(null)}
-              modifiers={[fillMaxWidth()]}
+          {selected.description && (
+            <Text
+              style={{ typography: "bodyMedium" }}
+              color={colors.onSurface}
             >
-              <Text
-                style={{ typography: "labelLarge" }}
-                color={colors.onSurfaceVariant}
-              >
-                Tutup
-              </Text>
-            </OutlinedButton>
-          </Column>
-        </ModalBottomSheet>
+              {selected.description}
+            </Text>
+          )}
+
+          {selected.docs && (
+            <Box
+              modifiers={[
+                fillMaxWidth(),
+                height(220),
+                clip(Shapes.RoundedCorner(12)),
+                background(colors.surfaceContainerHighest),
+              ]}
+            >
+              <RNHostView>
+                <Image
+                  source={{ uri: selected.docs }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="contain"
+                />
+              </RNHostView>
+            </Box>
+          )}
+
+          <SheetActions onCancel={() => setSelected(null)} cancelLabel="Tutup" />
+        </FormSheet>
       )}
-    </Host>
+    </AppHost>
   );
 }

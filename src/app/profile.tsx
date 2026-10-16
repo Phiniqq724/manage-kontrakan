@@ -1,6 +1,13 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
+import { useHideOnScroll } from "@/utils/tab-action";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
+import { FormField } from "@/components/FormField";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { ButtonContent } from "@/components/ButtonContent";
 import { AddAccountSheet } from "@/components/LinkedAccountSheet";
+import { ReportIssueSheet } from "@/components/ReportIssueSheet";
+import { useAccountActions } from "@/utils/account-actions";
 import {
   PaymentMethodFormSheet,
   PaymentMethodsListSheet,
@@ -20,23 +27,15 @@ import {
   kamarApi,
   linkedAccountsApi,
   paymentsApi,
-  reportsApi,
   usersApi,
 } from "@/services/api";
 import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
 import { useAuth } from "@/utils/auth-context";
-import {
-  smartSignOut,
-  switchToLinkedAccount,
-  unlinkAccount,
-} from "@/utils/multi-session";
-import { getAdminToken, sendPushNotification } from "@/utils/notifications";
+import { unlinkAccount } from "@/utils/multi-session";
 import { seedTextField } from "@/utils/seed-text-field";
 import { supabase } from "@/utils/supabase";
 import type { Database } from "@/utils/supabase-types";
 import { captureAndUploadImage, pickAndUploadImage } from "@/utils/upload";
-import AdminPanelSettings from "@expo/material-symbols/admin_panel_settings.xml";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import ChevronRight from "@expo/material-symbols/chevron_right.xml";
 import Close from "@expo/material-symbols/close.xml";
@@ -49,7 +48,6 @@ import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import PhotoLibrary from "@expo/material-symbols/photo_library.xml";
 import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
 import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
-import { Host } from "@expo/ui";
 import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
   Box,
@@ -59,16 +57,12 @@ import {
   HorizontalDivider,
   Icon,
   IconButton,
-  ModalBottomSheet,
   OutlinedButton,
   OutlinedCard,
-  OutlinedTextField,
   PullToRefreshBox,
   Row,
   Shape,
   Text,
-  TextButton,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   align,
@@ -77,16 +71,13 @@ import {
   clip,
   fillMaxSize,
   fillMaxWidth,
-  imePadding,
   padding,
   paddingAll,
   Shapes,
   size,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
 import Constants from "expo-constants";
-import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 
@@ -102,8 +93,9 @@ function kamarLabel(k: KamarRow | null) {
 }
 
 export default function ProfileScreen() {
+  const hideOnScroll = useHideOnScroll();
   const { user, refresh } = useAuth();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
 
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [kamar, setKamar] = useState<KamarRow | null>(null);
@@ -173,34 +165,12 @@ export default function ProfileScreen() {
     loadData().finally(() => setRefreshing(false));
   };
 
-  const handleLogout = async () => {
-    if (!user) return;
-    const switchedToFallback = await smartSignOut(user.id);
-    // setSession() (used internally to restore the fallback session) only
-    // fires a SIGNED_IN auth event — which AuthProvider listens for to
-    // refetch `user` — when the stored token hasn't expired yet. If it has,
-    // Supabase silently refreshes it instead and fires TOKEN_REFRESHED,
-    // which AuthProvider ignores, leaving `user` stuck on the account that
-    // just signed out. Refresh explicitly so this doesn't depend on that.
-    if (switchedToFallback) await refresh();
-    router.replace(
-      switchedToFallback ? ("/(tabs)/dashboard" as any) : "/auth/login",
-    );
-  };
+  const { logout: handleLogout, switchAccount } = useAccountActions();
 
   const handleSwitchAccount = async () => {
-    if (!user) return;
     setSwitching(true);
     try {
-      await switchToLinkedAccount({
-        id: user.id,
-        fullname: user.fullname,
-        email: user.email,
-      });
-      // See handleLogout above — don't rely on the SIGNED_IN auth event to
-      // pick up the switched-to account, since it may not fire.
-      await refresh();
-      router.replace("/(tabs)/dashboard" as any);
+      await switchAccount();
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -223,7 +193,7 @@ export default function ProfileScreen() {
   const actionablePayment = payments.find((p) => isPayable(p.status));
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -232,13 +202,11 @@ export default function ProfileScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 20 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           {/* Header */}
           <Row verticalAlignment="center" modifiers={[fillMaxWidth()]}>
-            <IconButton onClick={() => router.back()}>
-              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-            </IconButton>
+            <BackButton />
             <Text
               style={{
                 typography: "titleLarge",
@@ -335,42 +303,45 @@ export default function ProfileScreen() {
               size={20}
             />
           </Row>
-          <Row
-            verticalAlignment="center"
-            horizontalArrangement="spaceBetween"
-            modifiers={[
-              fillMaxWidth(),
-              clip(Shapes.RoundedCorner(18)),
-              background(colors.surfaceContainerLow),
-              clickable(() => setPaymentMethodsSheetOpen(true)),
-              paddingAll(16),
-            ]}
-          >
-            <Column
-              verticalArrangement={{ spacedBy: 2 }}
-              modifiers={[weight(1)]}
+          {/* Only the admin's QRIS / accounts are used (rent payment form). */}
+          {user.role === "admin" && (
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement="spaceBetween"
+              modifiers={[
+                fillMaxWidth(),
+                clip(Shapes.RoundedCorner(18)),
+                background(colors.surfaceContainerLow),
+                clickable(() => setPaymentMethodsSheetOpen(true)),
+                paddingAll(16),
+              ]}
             >
-              <Text
-                style={{ typography: "bodyLarge", fontWeight: "bold" }}
-                color={colors.onSurface}
+              <Column
+                verticalArrangement={{ spacedBy: 2 }}
+                modifiers={[weight(1)]}
               >
-                Payment Method
-              </Text>
-              <Text
-                style={{ typography: "bodySmall" }}
-                color={colors.onSurfaceVariant}
-                overflow="ellipsis"
-                maxLines={1}
-              >
-                Personalize your payment method
-              </Text>
-            </Column>
-            <Icon
-              source={ChevronRight}
-              tint={colors.onSurfaceVariant}
-              size={20}
-            />
-          </Row>
+                <Text
+                  style={{ typography: "bodyLarge", fontWeight: "bold" }}
+                  color={colors.onSurface}
+                >
+                  Metode pembayaran
+                </Text>
+                <Text
+                  style={{ typography: "bodySmall" }}
+                  color={colors.onSurfaceVariant}
+                  overflow="ellipsis"
+                  maxLines={1}
+                >
+                  QRIS & rekening untuk bayar sewa
+                </Text>
+              </Column>
+              <Icon
+                source={ChevronRight}
+                tint={colors.onSurfaceVariant}
+                size={20}
+              />
+            </Row>
+          )}
           <Row
             verticalAlignment="center"
             horizontalArrangement="spaceBetween"
@@ -408,42 +379,6 @@ export default function ProfileScreen() {
               size={20}
             />
           </Row>
-
-          {user.role === "admin" && (
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement="spaceBetween"
-              modifiers={[
-                fillMaxWidth(),
-                clip(Shapes.RoundedCorner(18)),
-                background(colors.surfaceContainerLow),
-                clickable(() => router.push("/admin" as any)),
-                paddingAll(16),
-              ]}
-            >
-              <Row
-                verticalAlignment="center"
-                horizontalArrangement={{ spacedBy: 12 }}
-              >
-                <Icon
-                  source={AdminPanelSettings}
-                  tint={colors.onSurfaceVariant}
-                  size={22}
-                />
-                <Text
-                  style={{ typography: "bodyLarge", fontWeight: "bold" }}
-                  color={colors.onSurface}
-                >
-                  Panel Admin
-                </Text>
-              </Row>
-              <Icon
-                source={ChevronRight}
-                tint={colors.onSurfaceVariant}
-                size={20}
-              />
-            </Row>
-          )}
 
           {linkedAccount ? (
             <Row
@@ -670,7 +605,7 @@ export default function ProfileScreen() {
           onClose={() => setReportSheetOpen(false)}
         />
       )}
-    </Host>
+    </AppHost>
   );
 }
 
@@ -683,7 +618,7 @@ function InfoRow({
   value: string;
   onClick?: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   return (
     <Row
       verticalAlignment="center"
@@ -731,7 +666,7 @@ function InfoRow({
 }
 
 function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const [opening, setOpening] = useState(false);
   const updateAvailable =
     !!latest && isNewerVersion(CURRENT_VERSION, latest.version);
@@ -837,7 +772,7 @@ function EditProfileSheet({
   onChangePassword: () => void;
   onAvatarUpdated: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const fullnameRef = useRef<TextFieldRef>(null);
   const usernameRef = useRef<TextFieldRef>(null);
   const contactRef = useRef<TextFieldRef>(null);
@@ -912,145 +847,107 @@ function EditProfileSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
-      >
-        <Text
-          style={{ typography: "headlineSmall", fontWeight: "bold" }}
-          color={colors.onSurface}
-        >
-          Edit profil
-        </Text>
-
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 16 }}
-        >
-          <Box modifiers={[size(72, 72)]}>
-            <Avatar
-              fullname={user.fullname}
-              avatarUrl={avatarUrl}
-              diameter={72}
-              colors={avatarColorFor(user.id, colors)}
-            />
-            {avatarUrl && (
-              <FilledIconButton
-                onClick={handleRemoveAvatar}
-                shape={Shape.Circle({ radius: 1 })}
-                colors={{
-                  containerColor: colors.error,
-                  contentColor: colors.onError,
-                }}
-                modifiers={[align("topEnd"), size(22, 22)]}
-              >
-                <Icon source={Close} tint={colors.onError} size={14} />
-              </FilledIconButton>
-            )}
-          </Box>
-          <Column verticalArrangement={{ spacedBy: 8 }} modifiers={[weight(1)]}>
-            <OutlinedButton
-              enabled={!uploadingAvatar}
-              onClick={() => doUploadAvatar("camera")}
-              modifiers={[fillMaxWidth()]}
-            >
-              <Row
-                verticalAlignment="center"
-                horizontalArrangement={{ spacedBy: 6 }}
-              >
-                <Icon source={PhotoCamera} tint={colors.primary} size={16} />
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  Kamera
-                </Text>
-              </Row>
-            </OutlinedButton>
-            <OutlinedButton
-              enabled={!uploadingAvatar}
-              onClick={() => doUploadAvatar("gallery")}
-              modifiers={[fillMaxWidth()]}
-            >
-              <Row
-                verticalAlignment="center"
-                horizontalArrangement={{ spacedBy: 6 }}
-              >
-                <Icon source={PhotoLibrary} tint={colors.primary} size={16} />
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  Galeri
-                </Text>
-              </Row>
-            </OutlinedButton>
-          </Column>
-        </Row>
-
-        <OutlinedTextField
-          ref={fullnameRef}
-          singleLine
-          onValueChange={setFullname}
-          keyboardOptions={{ capitalization: "words" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Nama lengkap</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <OutlinedTextField
-          ref={usernameRef}
-          singleLine
-          onValueChange={setUsername}
-          keyboardOptions={{ capitalization: "none" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Username</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <OutlinedTextField
-          ref={contactRef}
-          singleLine
-          onValueChange={setContact}
-          keyboardOptions={{ keyboardType: "phone" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Kontak (WA)</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <Button
-          enabled={!saving}
-          onClick={handleSaveProfile}
-          modifiers={[fillMaxWidth()]}
-        >
-          <ButtonContent
-            loading={saving}
-            label="Simpan profil"
-            color={colors.onPrimary}
+    <FormSheet title="Edit profil" onClose={onClose}>
+      <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 16 }}>
+        <Box modifiers={[size(72, 72)]}>
+          <Avatar
+            fullname={user.fullname}
+            avatarUrl={avatarUrl}
+            diameter={72}
+            colors={avatarColorFor(user.id, colors)}
           />
-        </Button>
+          {avatarUrl && (
+            <FilledIconButton
+              onClick={handleRemoveAvatar}
+              shape={Shape.Circle({ radius: 1 })}
+              colors={{
+                containerColor: colors.error,
+                contentColor: colors.onError,
+              }}
+              modifiers={[align("topEnd"), size(22, 22)]}
+            >
+              <Icon source={Close} tint={colors.onError} size={14} />
+            </FilledIconButton>
+          )}
+        </Box>
+        <Column verticalArrangement={{ spacedBy: 8 }} modifiers={[weight(1)]}>
+          <OutlinedButton
+            enabled={!uploadingAvatar}
+            onClick={() => doUploadAvatar("camera")}
+            modifiers={[fillMaxWidth()]}
+          >
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 6 }}
+            >
+              <Icon source={PhotoCamera} tint={colors.primary} size={16} />
+              <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+                Kamera
+              </Text>
+            </Row>
+          </OutlinedButton>
+          <OutlinedButton
+            enabled={!uploadingAvatar}
+            onClick={() => doUploadAvatar("gallery")}
+            modifiers={[fillMaxWidth()]}
+          >
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 6 }}
+            >
+              <Icon source={PhotoLibrary} tint={colors.primary} size={16} />
+              <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+                Galeri
+              </Text>
+            </Row>
+          </OutlinedButton>
+        </Column>
+      </Row>
 
-        <HorizontalDivider color={colors.outlineVariant} />
+      <FormField
+        label="Nama lengkap"
+        ref={fullnameRef}
+        singleLine
+        onValueChange={setFullname}
+        keyboardOptions={{ capitalization: "words" }}
+      />
 
-        <OutlinedButton onClick={onChangePassword} modifiers={[fillMaxWidth()]}>
-          <Text style={{ typography: "labelLarge" }} color={colors.primary}>
-            Ubah password
-          </Text>
-        </OutlinedButton>
-      </Column>
-    </ModalBottomSheet>
+      <FormField
+        label="Username"
+        ref={usernameRef}
+        singleLine
+        onValueChange={setUsername}
+        keyboardOptions={{ capitalization: "none" }}
+      />
+
+      <FormField
+        label="Kontak (WA)"
+        ref={contactRef}
+        singleLine
+        onValueChange={setContact}
+        keyboardOptions={{ keyboardType: "phone" }}
+      />
+
+      <Button
+        enabled={!saving}
+        onClick={handleSaveProfile}
+        modifiers={[fillMaxWidth()]}
+      >
+        <ButtonContent
+          loading={saving}
+          label="Simpan profil"
+          color={colors.onPrimary}
+        />
+      </Button>
+
+      <HorizontalDivider color={colors.outlineVariant} />
+
+      <OutlinedButton onClick={onChangePassword} modifiers={[fillMaxWidth()]}>
+        <Text style={{ typography: "labelLarge" }} color={colors.primary}>
+          Ubah password
+        </Text>
+      </OutlinedButton>
+    </FormSheet>
   );
 }
 
@@ -1061,7 +958,7 @@ function ChangePasswordSheet({
   userId: string;
   onClose: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPw, setChangingPw] = useState(false);
@@ -1081,7 +978,6 @@ function ChangePasswordSheet({
         password: newPassword,
       });
       if (authError) throw authError;
-      await usersApi.update(userId, { password: newPassword });
       onClose();
     } catch (err: any) {
       alert(err.message);
@@ -1091,201 +987,33 @@ function ChangePasswordSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
+    <FormSheet title="Ubah password" onClose={onClose}>
+      <FormField
+        label="Password baru"
+        singleLine
+        onValueChange={setNewPassword}
+        visualTransformation="password"
+      />
+
+      <FormField
+        label="Konfirmasi password"
+        singleLine
+        onValueChange={setConfirmPassword}
+        visualTransformation="password"
+      />
+
+      <Button
+        enabled={!changingPw}
+        onClick={handleChangePassword}
+        modifiers={[fillMaxWidth()]}
       >
-        <Text
-          style={{ typography: "headlineSmall", fontWeight: "bold" }}
-          color={colors.onSurface}
-        >
-          Ubah password
-        </Text>
-
-        <OutlinedTextField
-          singleLine
-          onValueChange={setNewPassword}
-          visualTransformation="password"
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Password baru</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <OutlinedTextField
-          singleLine
-          onValueChange={setConfirmPassword}
-          visualTransformation="password"
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Konfirmasi password</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <Button
-          enabled={!changingPw}
-          onClick={handleChangePassword}
-          modifiers={[fillMaxWidth()]}
-        >
-          <ButtonContent
-            loading={changingPw}
-            label="Ubah password"
-            color={colors.onPrimary}
-          />
-        </Button>
-      </Column>
-    </ModalBottomSheet>
-  );
-}
-
-function ReportIssueSheet({
-  userId,
-  userFullname,
-  onClose,
-}: {
-  userId: string;
-  userFullname: string;
-  onClose: () => void;
-}) {
-  const colors = useMaterialColors();
-  const [title, setTitle] = useState("");
-  const [desc, setDesc] = useState("");
-  const [evidenceUri, setEvidenceUri] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-
-  const handlePickEvidence = async () => {
-    try {
-      const url = await pickAndUploadImage("report-evidence", userId);
-      if (url) setEvidenceUri(url);
-    } catch (err: any) {
-      alert(err.message);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!title.trim()) {
-      alert("Judul laporan wajib diisi.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const { error } = await reportsApi.create({
-        title,
-        description: desc,
-        suspect: null,
-        created_by: userId,
-        docs: evidenceUri,
-      });
-      if (error) throw error;
-      onClose();
-      const adminToken = await getAdminToken();
-      if (adminToken) {
-        await sendPushNotification(
-          adminToken,
-          "Laporan Baru",
-          `${userFullname} membuat laporan: ${title}.`,
-        );
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
-      >
-        <Column verticalArrangement={{ spacedBy: 4 }}>
-          <Text
-            style={{ typography: "headlineSmall", fontWeight: "bold" }}
-            color={colors.onSurface}
-          >
-            Buat laporan
-          </Text>
-          <Text
-            style={{ typography: "bodyMedium" }}
-            color={colors.onSurfaceVariant}
-          >
-            Laporkan masalah aplikasi atau kontrakan secara umum
-          </Text>
-        </Column>
-
-        <OutlinedTextField
-          singleLine
-          onValueChange={setTitle}
-          keyboardOptions={{ capitalization: "sentences" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Judul laporan</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <OutlinedTextField
-          onValueChange={setDesc}
-          minLines={3}
-          keyboardOptions={{ capitalization: "sentences" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Deskripsi</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <OutlinedButton
-          onClick={handlePickEvidence}
-          modifiers={[fillMaxWidth()]}
-        >
-          <Text style={{ typography: "labelLarge" }} color={colors.primary}>
-            {evidenceUri ? "Bukti terlampir" : "Lampirkan bukti (opsional)"}
-          </Text>
-        </OutlinedButton>
-
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
-            <Text
-              style={{ typography: "labelLarge" }}
-              color={colors.onSurfaceVariant}
-            >
-              Batal
-            </Text>
-          </OutlinedButton>
-          <Button
-            enabled={title.trim().length > 0 && !submitting}
-            onClick={handleSubmit}
-            modifiers={[weight(1)]}
-          >
-            <ButtonContent
-              loading={submitting}
-              enabled={title.trim().length > 0}
-              label="Kirim laporan"
-              color={colors.onPrimary}
-            />
-          </Button>
-        </Row>
-      </Column>
-    </ModalBottomSheet>
+        <ButtonContent
+          loading={changingPw}
+          label="Ubah password"
+          color={colors.onPrimary}
+        />
+      </Button>
+    </FormSheet>
   );
 }
 
@@ -1298,7 +1026,7 @@ function EditKamarSheet({
   onClose: () => void;
   onSaved: (desc: string) => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const descRef = useRef<TextFieldRef>(null);
   const [desc, setDesc] = useState(kamar.description ?? "");
   const [saving, setSaving] = useState(false);
@@ -1323,69 +1051,26 @@ function EditKamarSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
-      >
-        <Column verticalArrangement={{ spacedBy: 4 }}>
-          <Text
-            style={{ typography: "headlineSmall", fontWeight: "bold" }}
-            color={colors.onSurface}
-          >
-            Deskripsi kamar
-          </Text>
-          <Text
-            style={{ typography: "bodyMedium" }}
-            color={colors.onSurfaceVariant}
-          >
-            {kamar.room_code}
-          </Text>
-        </Column>
+    <FormSheet
+      title="Deskripsi kamar"
+      subtitle={kamar.room_code}
+      onClose={onClose}
+    >
+      <FormField
+        label="Deskripsi"
+        ref={descRef}
+        onValueChange={setDesc}
+        minLines={2}
+        keyboardOptions={{ capitalization: "sentences" }}
+      />
 
-        <OutlinedTextField
-          ref={descRef}
-          onValueChange={setDesc}
-          minLines={2}
-          keyboardOptions={{ capitalization: "sentences" }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedTextField.Label>
-            <Text>Deskripsi</Text>
-          </OutlinedTextField.Label>
-        </OutlinedTextField>
-
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <TextButton onClick={onClose} modifiers={[weight(1)]}>
-            <Text
-              style={{ typography: "labelLarge" }}
-              color={colors.onSurfaceVariant}
-            >
-              Batal
-            </Text>
-          </TextButton>
-          <Button
-            enabled={!saving}
-            onClick={handleSave}
-            modifiers={[weight(1)]}
-          >
-            <ButtonContent
-              loading={saving}
-              label="Simpan"
-              color={colors.onPrimary}
-            />
-          </Button>
-        </Row>
-      </Column>
-    </ModalBottomSheet>
+      <SheetActions
+        onCancel={onClose}
+        onSubmit={handleSave}
+        submitLabel="Simpan"
+        enabled={!saving}
+        loading={saving}
+      />
+    </FormSheet>
   );
 }

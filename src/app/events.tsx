@@ -1,40 +1,37 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
 import { ButtonContent } from "@/components/ButtonContent";
+import { FormField } from "@/components/FormField";
+import { DateTimeField } from "@/components/DateTimeField";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { VoterAvatar } from "@/components/VoterAvatar";
 import { eventsApi, eventVotesApi, usersApi } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
+import { useHideOnScroll, useTabAction } from "@/utils/tab-action";
 import { cooldownRemaining, formatCooldown } from "@/utils/cooldown";
 import { castEventVote, createEventAndNotify } from "@/utils/events";
-import { sendPushNotification } from "@/utils/notifications";
+import { sendPush } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import Add from "@expo/material-symbols/add.xml";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import Event from "@expo/material-symbols/event.xml";
 import History from "@expo/material-symbols/history.xml";
 import LocationOn from "@expo/material-symbols/location_on.xml";
 import NotificationsActive from "@expo/material-symbols/notifications_active.xml";
 import Schedule from "@expo/material-symbols/schedule.xml";
-import { Host } from "@expo/ui";
 import {
   Box,
   Button,
   Card,
   Column,
-  DatePickerDialog,
-  ExtendedFloatingActionButton,
   HorizontalDivider,
   Icon,
-  IconButton,
   ModalBottomSheet,
   OutlinedButton,
-  OutlinedTextField,
   PullToRefreshBox,
   Row,
   Text,
-  TimePickerDialog,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
-  align,
   background,
   clip,
   fillMaxHeight,
@@ -48,8 +45,7 @@ import {
   verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type EventRow = Database["public"]["Tables"]["events"]["Row"];
 type EventVoteRow = Database["public"]["Tables"]["event_votes"]["Row"];
@@ -71,27 +67,10 @@ function formatEventDateTime(iso: string) {
   return `${date}, ${time}`;
 }
 
-/** Keeps the currently-picked time-of-day while swapping in a new date. */
-function mergeDatePart(base: Date | null, datePart: Date): Date {
-  const result = base ? new Date(base) : new Date();
-  result.setFullYear(
-    datePart.getFullYear(),
-    datePart.getMonth(),
-    datePart.getDate(),
-  );
-  return result;
-}
-
-/** Keeps the currently-picked date while swapping in a new time-of-day. */
-function mergeTimePart(base: Date | null, timePart: Date): Date {
-  const result = base ? new Date(base) : new Date();
-  result.setHours(timePart.getHours(), timePart.getMinutes(), 0, 0);
-  return result;
-}
-
 export default function EventsScreen() {
   const { user } = useAuth();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
+  const hideOnScroll = useHideOnScroll();
 
   const [events, setEvents] = useState<EventRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
@@ -107,27 +86,19 @@ export default function EventsScreen() {
   const [, tick] = useState(0);
 
   const [createOpen, setCreateOpen] = useState(false);
+  useTabAction("events", Add, () => setCreateOpen(true));
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
   const [pickedDate, setPickedDate] = useState<Date | null>(null);
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Computed once, not on every render — the reminder-cooldown countdown
-  // below re-renders this screen every second, and passing a fresh Date/
-  // object literal to the native date picker on every tick was resetting
-  // its in-progress selection back to today while the user was browsing it.
-  const [pickerNow] = useState(() => new Date());
+  // Fixed for the screen's lifetime so the 1s cooldown re-render can't
+  // reset the calendar while it is open.
   const [pickerToday] = useState(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
     return d;
   });
-  const selectableDates = useMemo(
-    () => ({ start: pickerToday }),
-    [pickerToday],
-  );
 
   const canSubmit =
     name.trim().length > 0 &&
@@ -201,19 +172,15 @@ export default function EventsScreen() {
     if (cooldownRemaining(remindedAt[event.id] ?? null) > 0) return;
     setRemindingId(event.id);
     try {
-      const tokens = attendingUsers
-        .map((u) => u.push_token)
-        .filter((t): t is string => !!t);
-      await Promise.all(
-        tokens.map((token) =>
-          sendPushNotification(
-            token,
-            "Pengingat Acara",
-            `"${event.name}" akan berlangsung hari ini di ${event.location}.`,
-            { data: { eventId: event.id } },
-          ),
-        ),
-      );
+      if (attendingUsers.length > 0) {
+        await sendPush({
+          recipients: attendingUsers.map((u) => u.id),
+          type: "event",
+          title: "Pengingat Acara",
+          body: `"${event.name}" akan berlangsung hari ini di ${event.location}.`,
+          data: { eventId: event.id },
+        });
+      }
       setRemindedAt((prev) => ({ ...prev, [event.id]: Date.now() }));
     } finally {
       setRemindingId(null);
@@ -255,7 +222,7 @@ export default function EventsScreen() {
   const totalMembers = Object.keys(users).length;
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <Box modifiers={[fillMaxSize()]}>
         <PullToRefreshBox
           isRefreshing={refreshing}
@@ -267,8 +234,8 @@ export default function EventsScreen() {
             verticalArrangement={{ spacedBy: 24 }}
             modifiers={[
               fillMaxSize(),
-              verticalScroll(),
-              padding(16, 56, 16, 100),
+              hideOnScroll,
+              padding(16, 56, 16, 120),
             ]}
           >
             <Row
@@ -276,9 +243,7 @@ export default function EventsScreen() {
               horizontalArrangement={{ spacedBy: 4 }}
               modifiers={[fillMaxWidth()]}
             >
-              <IconButton onClick={() => router.back()}>
-                <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-              </IconButton>
+              <BackButton />
               <Column
                 verticalArrangement={{ spacedBy: 2 }}
                 modifiers={[weight(1)]}
@@ -614,19 +579,6 @@ export default function EventsScreen() {
           </Column>
         </PullToRefreshBox>
 
-        <ExtendedFloatingActionButton
-          onClick={() => setCreateOpen(true)}
-          modifiers={[align("bottomEnd"), padding(0, 0, 20, 24)]}
-        >
-          <ExtendedFloatingActionButton.Icon>
-            <Icon source={Add} size={20} />
-          </ExtendedFloatingActionButton.Icon>
-          <ExtendedFloatingActionButton.Text>
-            <Text style={{ typography: "labelLarge", fontWeight: "bold" }}>
-              Buat Event
-            </Text>
-          </ExtendedFloatingActionButton.Text>
-        </ExtendedFloatingActionButton>
       </Box>
 
       {historyOpen && (
@@ -702,144 +654,42 @@ export default function EventsScreen() {
       )}
 
       {createOpen && (
-        <ModalBottomSheet onDismissRequest={() => setCreateOpen(false)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              padding(24, 8, 24, 32),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                Buat acara baru
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                Anggota lain akan diberi tahu dan bisa vote ikut atau tidak.
-              </Text>
-            </Column>
+        <FormSheet
+          title="Buat acara baru"
+          subtitle="Anggota lain akan diberi tahu dan bisa vote ikut atau tidak."
+          onClose={() => setCreateOpen(false)}
+        >
+          <FormField
+            label="Nama acara"
+            onValueChange={setName}
+            singleLine
+            keyboardOptions={{ capitalization: "sentences" }}
+          />
 
-            <OutlinedTextField
-              onValueChange={setName}
-              singleLine
-              keyboardOptions={{ capitalization: "sentences" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>Nama acara</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
+          <FormField
+            label="Lokasi"
+            onValueChange={setLocation}
+            singleLine
+            keyboardOptions={{ capitalization: "sentences" }}
+          />
 
-            <OutlinedTextField
-              onValueChange={setLocation}
-              singleLine
-              keyboardOptions={{ capitalization: "sentences" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>Lokasi</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
+          <DateTimeField
+            label="Waktu acara"
+            value={pickedDate}
+            onChange={setPickedDate}
+            minDate={pickerToday}
+          />
 
-            <Row
-              horizontalArrangement={{ spacedBy: 12 }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedButton
-                onClick={() => setDatePickerOpen(true)}
-                modifiers={[weight(1)]}
-              >
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  {pickedDate
-                    ? pickedDate.toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "long",
-                        year: "numeric",
-                      })
-                    : "Pilih tanggal"}
-                </Text>
-              </OutlinedButton>
-              <OutlinedButton
-                onClick={() => setTimePickerOpen(true)}
-                modifiers={[weight(1)]}
-              >
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  {pickedDate
-                    ? pickedDate.toLocaleTimeString("id-ID", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "Pilih waktu"}
-                </Text>
-              </OutlinedButton>
-            </Row>
-
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement={{ spacedBy: 12 }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedButton
-                onClick={() => setCreateOpen(false)}
-                modifiers={[weight(1)]}
-              >
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  Batal
-                </Text>
-              </OutlinedButton>
-              <Button
-                enabled={canSubmit && !submitting}
-                onClick={handleCreate}
-                modifiers={[weight(1)]}
-              >
-                <ButtonContent
-                  loading={submitting}
-                  enabled={canSubmit}
-                  label="Buat"
-                  color={colors.onPrimary}
-                />
-              </Button>
-            </Row>
-          </Column>
-        </ModalBottomSheet>
+          <SheetActions
+            onCancel={() => setCreateOpen(false)}
+            onSubmit={handleCreate}
+            submitLabel="Buat"
+            enabled={canSubmit}
+            loading={submitting}
+          />
+        </FormSheet>
       )}
 
-      {datePickerOpen && (
-        <DatePickerDialog
-          initialDate={(pickedDate ?? pickerNow).toISOString()}
-          onDateSelected={(d) => {
-            setPickedDate((prev) => mergeDatePart(prev, d));
-            setDatePickerOpen(false);
-          }}
-          onDismissRequest={() => setDatePickerOpen(false)}
-        />
-      )}
-      {timePickerOpen && (
-        <TimePickerDialog
-          initialDate={(pickedDate ?? pickerNow).toISOString()}
-          onDateSelected={(d) => {
-            setPickedDate((prev) => mergeTimePart(prev, d));
-            setTimePickerOpen(false);
-          }}
-          onDismissRequest={() => setTimePickerOpen(false)}
-        />
-      )}
-    </Host>
+    </AppHost>
   );
 }

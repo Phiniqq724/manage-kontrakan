@@ -1,20 +1,19 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
+import { FormField } from "@/components/FormField";
+import { FormSheet } from "@/components/FormSheet";
 import { SemanggiIcon } from "@/components/SemanggiIcon";
 import { signIn } from "@/utils/auth";
 import { supabase } from "@/utils/supabase";
-import { Host } from "@expo/ui";
 import {
   Box,
   Button,
   Checkbox,
   Column,
   LinearWavyProgressIndicator,
-  ModalBottomSheet,
-  OutlinedTextField,
   RNHostView,
   Row,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -23,12 +22,10 @@ import {
   fillMaxSize,
   fillMaxWidth,
   height,
-  imePadding,
   padding,
   Shapes,
   size,
   toggleable,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { router } from "expo-router";
@@ -55,7 +52,7 @@ function friendlyError(msg: string): string {
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -83,7 +80,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signIn(email, password);
-      router.replace("/(tabs)/dashboard" as any);
+      router.replace("/(tabs)/dashboard");
     } catch (err: any) {
       setError(friendlyError(err?.message ?? "Terjadi kesalahan."));
     } finally {
@@ -92,7 +89,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <Column
         horizontalAlignment="center"
         modifiers={[
@@ -177,118 +174,89 @@ export default function LoginScreen() {
       </Column>
 
       {sheetOpen && (
-        <ModalBottomSheet onDismissRequest={() => setSheetOpen(false)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              imePadding(),
-              padding(24, 8, 24, insets.bottom + 24),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                Masuk
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                Selamat datang kembali di Semanggi.
-              </Text>
-            </Column>
+        <FormSheet
+          title="Masuk"
+          subtitle="Selamat datang kembali di Semanggi."
+          onClose={() => setSheetOpen(false)}
+        >
+          <FormField
+            label="Email"
+            singleLine
+            autoFocus
+            enabled={!loading}
+            onValueChange={setEmail}
+            keyboardOptions={{
+              keyboardType: "email",
+              capitalization: "none",
+              imeAction: "next",
+            }}
+          />
 
-            <OutlinedTextField
+          <Column verticalArrangement={{ spacedBy: 6 }}>
+            <FormField
+              label="Password"
               singleLine
-              autoFocus
               enabled={!loading}
-              onValueChange={setEmail}
+              onValueChange={setPassword}
+              visualTransformation={showPassword ? "none" : "password"}
               keyboardOptions={{
-                keyboardType: "email",
-                capitalization: "none",
-                imeAction: "next",
+                keyboardType: "password",
+                imeAction: "done",
               }}
+              keyboardActions={{ onDone: () => handleLogin() }}
+            />
+
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement="spaceBetween"
               modifiers={[fillMaxWidth()]}
             >
-              <OutlinedTextField.Label>
-                <Text>Email</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
-
-            <Column verticalArrangement={{ spacedBy: 6 }}>
-              <OutlinedTextField
-                singleLine
-                enabled={!loading}
-                onValueChange={setPassword}
-                visualTransformation={showPassword ? "none" : "password"}
-                keyboardOptions={{
-                  keyboardType: "password",
-                  imeAction: "done",
-                }}
-                keyboardActions={{ onDone: () => handleLogin() }}
-                modifiers={[fillMaxWidth()]}
-              >
-                <OutlinedTextField.Label>
-                  <Text>Password</Text>
-                </OutlinedTextField.Label>
-              </OutlinedTextField>
-
               <Row
                 verticalAlignment="center"
-                horizontalArrangement="spaceBetween"
-                modifiers={[fillMaxWidth()]}
+                horizontalArrangement={{ spacedBy: 8 }}
+                modifiers={[
+                  toggleable(showPassword, () => setShowPassword((v) => !v), {
+                    role: "checkbox",
+                  }),
+                ]}
               >
-                <Row
-                  verticalAlignment="center"
-                  horizontalArrangement={{ spacedBy: 8 }}
-                  modifiers={[
-                    toggleable(showPassword, () => setShowPassword((v) => !v), {
-                      role: "checkbox",
-                    }),
-                  ]}
-                >
-                  <Checkbox value={showPassword} />
-                  <Text
-                    style={{ typography: "bodyMedium" }}
-                    color={colors.onSurfaceVariant}
-                  >
-                    Tampilkan password
-                  </Text>
-                </Row>
-
+                <Checkbox value={showPassword} />
                 <Text
-                  style={{ typography: "labelLarge", fontWeight: "600" }}
-                  color={colors.primary}
+                  style={{ typography: "bodyMedium" }}
+                  color={colors.onSurfaceVariant}
                 >
-                  Lupa password?
+                  Tampilkan password
                 </Text>
               </Row>
-            </Column>
 
-            {error && (
-              <Text style={{ typography: "bodySmall" }} color={colors.error}>
-                {error}
+              <Text
+                style={{ typography: "labelLarge", fontWeight: "600" }}
+                color={colors.primary}
+              >
+                Lupa password?
               </Text>
-            )}
-
-            <Button
-              enabled={!loading}
-              onClick={handleLogin}
-              modifiers={[fillMaxWidth(), height(56)]}
-            >
-              <ButtonContent
-                loading={loading}
-                label="Masuk"
-                color={colors.onPrimary}
-              />
-            </Button>
+            </Row>
           </Column>
-        </ModalBottomSheet>
+
+          {error && (
+            <Text style={{ typography: "bodySmall" }} color={colors.error}>
+              {error}
+            </Text>
+          )}
+
+          <Button
+            enabled={!loading}
+            onClick={handleLogin}
+            modifiers={[fillMaxWidth(), height(56)]}
+          >
+            <ButtonContent
+              loading={loading}
+              label="Masuk"
+              color={colors.onPrimary}
+            />
+          </Button>
+        </FormSheet>
       )}
-    </Host>
+    </AppHost>
   );
 }

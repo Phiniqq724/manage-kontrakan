@@ -44,6 +44,15 @@ export const usersApi = {
     await supabase.from("users").update(data).eq("id", id).select().single(),
   delete: async (id: string) =>
     await supabase.from("users").delete().eq("id", id),
+  /** Admin only: creates the login account and the member row (create-member edge function). */
+  createMember: async (data: {
+    fullname: string;
+    username: string;
+    email: string;
+    contact: string | null;
+    /** Omit to use the default password. */
+    password?: string;
+  }) => await supabase.functions.invoke("create-member", { body: data }),
 };
 
 // PIKETS API
@@ -242,17 +251,6 @@ export const requestVotesApi = {
       .eq("user_id", userId),
 };
 
-// CHANGELOGS API
-export const changelogsApi = {
-  getAll: async () =>
-    await supabase
-      .from("changelogs")
-      .select("*")
-      .order("created_at", { ascending: false }),
-  create: async (data: InsertTables<"changelogs">) =>
-    await supabase.from("changelogs").insert(data).select().single(),
-};
-
 // APP RELEASES API
 export const appReleasesApi = {
   getLatest: async () =>
@@ -315,65 +313,6 @@ export const paymentMethodsApi = {
       .single(),
   delete: async (id: string) =>
     await supabase.from("payment_methods").delete().eq("id", id),
-};
-
-// SPLIT BILLS API
-export const splitBillsApi = {
-  getAll: async () =>
-    await supabase
-      .from("split_bills")
-      .select(
-        "*, split_bill_participants(*), split_bill_payment_methods(*, payment_methods(*))",
-      )
-      .order("created_at", { ascending: false }),
-  getById: async (id: string) =>
-    await supabase
-      .from("split_bills")
-      .select(
-        "*, split_bill_participants(*), split_bill_payment_methods(*, payment_methods(*))",
-      )
-      .eq("id", id)
-      .single(),
-  create: async (data: InsertTables<"split_bills">) =>
-    await supabase.from("split_bills").insert(data).select().single(),
-  update: async (id: string, data: UpdateTables<"split_bills">) =>
-    await supabase
-      .from("split_bills")
-      .update(data)
-      .eq("id", id)
-      .select()
-      .single(),
-  delete: async (id: string) =>
-    await supabase.from("split_bills").delete().eq("id", id),
-};
-
-// SPLIT BILL PARTICIPANTS API
-export const splitBillParticipantsApi = {
-  getByBill: async (splitBillId: string) =>
-    await supabase
-      .from("split_bill_participants")
-      .select("*")
-      .eq("split_bill_id", splitBillId),
-  createMany: async (data: InsertTables<"split_bill_participants">[]) =>
-    await supabase.from("split_bill_participants").insert(data).select(),
-  update: async (id: string, data: UpdateTables<"split_bill_participants">) =>
-    await supabase
-      .from("split_bill_participants")
-      .update(data)
-      .eq("id", id)
-      .select()
-      .single(),
-};
-
-// SPLIT BILL PAYMENT METHODS API
-export const splitBillPaymentMethodsApi = {
-  getByBill: async (splitBillId: string) =>
-    await supabase
-      .from("split_bill_payment_methods")
-      .select("*, payment_methods(*)")
-      .eq("split_bill_id", splitBillId),
-  createMany: async (data: InsertTables<"split_bill_payment_methods">[]) =>
-    await supabase.from("split_bill_payment_methods").insert(data).select(),
 };
 
 // LINKED ACCOUNTS API

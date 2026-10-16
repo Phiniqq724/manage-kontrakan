@@ -1,4 +1,6 @@
+import { useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { paymentMethodsApi } from "@/services/api";
 import { seedTextField } from "@/utils/seed-text-field";
 import type { Database } from "@/utils/supabase-types";
@@ -14,7 +16,6 @@ import QrCode2 from "@expo/material-symbols/qr_code_2.xml";
 import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
   Box,
-  Button,
   CircularWavyProgressIndicator,
   Column,
   DropdownMenu,
@@ -24,7 +25,6 @@ import {
   Icon,
   IconButton,
   ModalBottomSheet,
-  OutlinedButton,
   OutlinedCard,
   OutlinedTextField,
   RNHostView,
@@ -32,7 +32,6 @@ import {
   SegmentedButton,
   SingleChoiceSegmentedButtonRow,
   Text,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -41,7 +40,6 @@ import {
   clip,
   fillMaxWidth,
   height,
-  imePadding,
   menuAnchor,
   padding,
   paddingAll,
@@ -99,7 +97,7 @@ export function PaymentMethodsListSheet({
   onAdd: () => void;
   onEdit: (method: PaymentMethodRow) => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const [methods, setMethods] = useState<PaymentMethodRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuForId, setMenuForId] = useState<string | null>(null);
@@ -328,7 +326,7 @@ export function PaymentMethodFormSheet({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const colors = useMaterialColors();
+  const colors = useAppColors();
   const isEditing = !!method;
 
   const [type, setType] = useState<PaymentMethodType>(
@@ -409,250 +407,220 @@ export function PaymentMethodFormSheet({
   };
 
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
-      <Column
-        verticalArrangement={{ spacedBy: 16 }}
-        modifiers={[
-          fillMaxWidth(),
-          verticalScroll(),
-          imePadding(),
-          padding(24, 8, 24, 32),
-        ]}
-      >
+    <FormSheet
+      title={isEditing ? "Edit metode" : "Tambah metode"}
+      onClose={onClose}
+    >
+      <Column verticalArrangement={{ spacedBy: 8 }}>
         <Text
-          style={{ typography: "headlineSmall", fontWeight: "bold" }}
+          style={{ typography: "labelMedium", fontWeight: "bold" }}
           color={colors.onSurface}
         >
-          {isEditing ? "Edit metode" : "Tambah metode"}
+          Jenis metode
         </Text>
+        <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
+          <SegmentedButton
+            selected={type === "bank"}
+            onClick={() => setType("bank")}
+          >
+            <SegmentedButton.Label>
+              <Text>Bank</Text>
+            </SegmentedButton.Label>
+          </SegmentedButton>
+          <SegmentedButton
+            selected={type === "emoney"}
+            onClick={() => setType("emoney")}
+          >
+            <SegmentedButton.Label>
+              <Text>E-money</Text>
+            </SegmentedButton.Label>
+          </SegmentedButton>
+          <SegmentedButton
+            selected={type === "qris"}
+            onClick={() => setType("qris")}
+          >
+            <SegmentedButton.Label>
+              <Text>QRIS</Text>
+            </SegmentedButton.Label>
+          </SegmentedButton>
+        </SingleChoiceSegmentedButtonRow>
+      </Column>
 
+      {type !== "qris" ? (
+        <>
+          <Column verticalArrangement={{ spacedBy: 7 }}>
+            <Text
+              style={{ typography: "labelMedium", fontWeight: "bold" }}
+              color={colors.onSurface}
+            >
+              {type === "bank" ? "Pilih bank" : "Pilih provider"}
+            </Text>
+            <ExposedDropdownMenuBox
+              expanded={type === "bank" ? bankMenuOpen : emoneyMenuOpen}
+              onExpandedChange={
+                type === "bank" ? setBankMenuOpen : setEmoneyMenuOpen
+              }
+            >
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement="spaceBetween"
+                modifiers={[
+                  fillMaxWidth(),
+                  height(56),
+                  border(1, colors.outline),
+                  clip(Shapes.RoundedCorner(8)),
+                  padding(16, 0, 16, 0),
+                  menuAnchor(),
+                ]}
+              >
+                <Text
+                  style={{ typography: "bodyLarge" }}
+                  color={
+                    (type === "bank" ? bank : emoneyProvider)
+                      ? colors.onSurface
+                      : colors.onSurfaceVariant
+                  }
+                >
+                  {(type === "bank" ? bank : emoneyProvider) ??
+                    (type === "bank" ? "Pilih bank" : "Pilih provider")}
+                </Text>
+                <Icon
+                  source={ArrowDropDown}
+                  tint={colors.onSurfaceVariant}
+                  size={22}
+                />
+              </Row>
+              <ExposedDropdownMenu
+                expanded={type === "bank" ? bankMenuOpen : emoneyMenuOpen}
+                onDismissRequest={() =>
+                  type === "bank"
+                    ? setBankMenuOpen(false)
+                    : setEmoneyMenuOpen(false)
+                }
+                modifiers={[height(240)]}
+              >
+                {(type === "bank" ? BANKS : EMONEY_PROVIDERS).map((opt) => (
+                  <DropdownMenuItem
+                    key={opt}
+                    onClick={() => {
+                      if (type === "bank") {
+                        setBank(opt);
+                        setBankMenuOpen(false);
+                      } else {
+                        setEmoneyProvider(opt);
+                        setEmoneyMenuOpen(false);
+                      }
+                    }}
+                  >
+                    <DropdownMenuItem.Text>
+                      <Text>{opt}</Text>
+                    </DropdownMenuItem.Text>
+                  </DropdownMenuItem>
+                ))}
+              </ExposedDropdownMenu>
+            </ExposedDropdownMenuBox>
+          </Column>
+
+          <OutlinedTextField
+            ref={accountNumberRef}
+            singleLine
+            onValueChange={setAccountNumber}
+            keyboardOptions={{ keyboardType: "number" }}
+            modifiers={[fillMaxWidth()]}
+          >
+            <OutlinedTextField.Label>
+              <Text>
+                {type === "bank" ? "Nomor rekening" : "Nomor HP / akun"}
+              </Text>
+            </OutlinedTextField.Label>
+          </OutlinedTextField>
+        </>
+      ) : (
         <Column verticalArrangement={{ spacedBy: 8 }}>
           <Text
             style={{ typography: "labelMedium", fontWeight: "bold" }}
             color={colors.onSurface}
           >
-            Jenis metode
+            Gambar QRIS
           </Text>
-          <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
-            <SegmentedButton
-              selected={type === "bank"}
-              onClick={() => setType("bank")}
-            >
-              <SegmentedButton.Label>
-                <Text>Bank</Text>
-              </SegmentedButton.Label>
-            </SegmentedButton>
-            <SegmentedButton
-              selected={type === "emoney"}
-              onClick={() => setType("emoney")}
-            >
-              <SegmentedButton.Label>
-                <Text>E-money</Text>
-              </SegmentedButton.Label>
-            </SegmentedButton>
-            <SegmentedButton
-              selected={type === "qris"}
-              onClick={() => setType("qris")}
-            >
-              <SegmentedButton.Label>
-                <Text>QRIS</Text>
-              </SegmentedButton.Label>
-            </SegmentedButton>
-          </SingleChoiceSegmentedButtonRow>
-        </Column>
-
-        {type !== "qris" ? (
-          <>
-            <Column verticalArrangement={{ spacedBy: 7 }}>
-              <Text
-                style={{ typography: "labelMedium", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                {type === "bank" ? "Pilih bank" : "Pilih provider"}
-              </Text>
-              <ExposedDropdownMenuBox
-                expanded={type === "bank" ? bankMenuOpen : emoneyMenuOpen}
-                onExpandedChange={
-                  type === "bank" ? setBankMenuOpen : setEmoneyMenuOpen
-                }
-              >
-                <Row
-                  verticalAlignment="center"
-                  horizontalArrangement="spaceBetween"
-                  modifiers={[
-                    fillMaxWidth(),
-                    height(56),
-                    border(1, colors.outline),
-                    clip(Shapes.RoundedCorner(8)),
-                    padding(16, 0, 16, 0),
-                    menuAnchor(),
-                  ]}
-                >
-                  <Text
-                    style={{ typography: "bodyLarge" }}
-                    color={
-                      (type === "bank" ? bank : emoneyProvider)
-                        ? colors.onSurface
-                        : colors.onSurfaceVariant
-                    }
-                  >
-                    {(type === "bank" ? bank : emoneyProvider) ??
-                      (type === "bank" ? "Pilih bank" : "Pilih provider")}
-                  </Text>
-                  <Icon
-                    source={ArrowDropDown}
-                    tint={colors.onSurfaceVariant}
-                    size={22}
-                  />
-                </Row>
-                <ExposedDropdownMenu
-                  expanded={type === "bank" ? bankMenuOpen : emoneyMenuOpen}
-                  onDismissRequest={() =>
-                    type === "bank"
-                      ? setBankMenuOpen(false)
-                      : setEmoneyMenuOpen(false)
-                  }
-                  modifiers={[height(240)]}
-                >
-                  {(type === "bank" ? BANKS : EMONEY_PROVIDERS).map((opt) => (
-                    <DropdownMenuItem
-                      key={opt}
-                      onClick={() => {
-                        if (type === "bank") {
-                          setBank(opt);
-                          setBankMenuOpen(false);
-                        } else {
-                          setEmoneyProvider(opt);
-                          setEmoneyMenuOpen(false);
-                        }
-                      }}
-                    >
-                      <DropdownMenuItem.Text>
-                        <Text>{opt}</Text>
-                      </DropdownMenuItem.Text>
-                    </DropdownMenuItem>
-                  ))}
-                </ExposedDropdownMenu>
-              </ExposedDropdownMenuBox>
-            </Column>
-
-            <OutlinedTextField
-              ref={accountNumberRef}
-              singleLine
-              onValueChange={setAccountNumber}
-              keyboardOptions={{ keyboardType: "number" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>
-                  {type === "bank" ? "Nomor rekening" : "Nomor HP / akun"}
-                </Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
-          </>
-        ) : (
-          <Column verticalArrangement={{ spacedBy: 8 }}>
-            <Text
-              style={{ typography: "labelMedium", fontWeight: "bold" }}
-              color={colors.onSurface}
-            >
-              Gambar QRIS
-            </Text>
-            <OutlinedCard
-              border={{ width: 2, color: colors.outline }}
-              colors={{ containerColor: colors.surfaceContainerLow }}
-              modifiers={[fillMaxWidth(), clickable(handlePickQris)]}
-            >
-              <Column
-                horizontalAlignment="center"
-                verticalArrangement={{ spacedBy: 12 }}
-                modifiers={[fillMaxWidth(), padding(18, 26, 18, 26)]}
-              >
-                {uploading ? (
-                  <CircularWavyProgressIndicator
-                    color={colors.primary}
-                    modifiers={[size(32, 32)]}
-                  />
-                ) : qrisUrl ? (
-                  <>
-                    <Box
-                      contentAlignment="center"
-                      modifiers={[
-                        fillMaxWidth(),
-                        height(240),
-                        clip(Shapes.RoundedCorner(12)),
-                        background(colors.surface),
-                      ]}
-                    >
-                      <RNHostView>
-                        <Image
-                          source={{ uri: qrisUrl }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="contain"
-                          onLoad={() => setLoadedQrisUrl(qrisUrl)}
-                        />
-                      </RNHostView>
-                      {loadedQrisUrl !== qrisUrl && (
-                        <CircularWavyProgressIndicator
-                          color={colors.primary}
-                          modifiers={[size(28, 28)]}
-                        />
-                      )}
-                    </Box>
-                    <Text
-                      style={{ typography: "bodyMedium", fontWeight: "600" }}
-                      color={colors.onSurface}
-                    >
-                      QRIS terunggah · ketuk untuk ganti
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Icon source={QrCode2} tint={colors.primary} size={48} />
-                    <Text
-                      style={{ typography: "bodyMedium", fontWeight: "600" }}
-                      color={colors.onSurface}
-                    >
-                      Unggah gambar QRIS
-                    </Text>
-                    <Text
-                      style={{ typography: "bodySmall" }}
-                      color={colors.onSurfaceVariant}
-                    >
-                      Foto / screenshot QRIS dari aplikasi bank atau e-wallet
-                      kamu.
-                    </Text>
-                  </>
-                )}
-              </Column>
-            </OutlinedCard>
-          </Column>
-        )}
-
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <OutlinedButton onClick={onClose} modifiers={[weight(1)]}>
-            <Text style={{ typography: "labelLarge" }} color={colors.primary}>
-              Batal
-            </Text>
-          </OutlinedButton>
-          <Button
-            enabled={canSave && !saving}
-            onClick={handleSave}
-            modifiers={[weight(1)]}
+          <OutlinedCard
+            border={{ width: 2, color: colors.outline }}
+            colors={{ containerColor: colors.surfaceContainerLow }}
+            modifiers={[fillMaxWidth(), clickable(handlePickQris)]}
           >
-            <ButtonContent
-              loading={saving}
-              enabled={canSave}
-              label={isEditing ? "Ubah Metode" : "Tambah Metode"}
-              color={colors.onPrimary}
-            />
-          </Button>
-        </Row>
-      </Column>
-    </ModalBottomSheet>
+            <Column
+              horizontalAlignment="center"
+              verticalArrangement={{ spacedBy: 12 }}
+              modifiers={[fillMaxWidth(), padding(18, 26, 18, 26)]}
+            >
+              {uploading ? (
+                <CircularWavyProgressIndicator
+                  color={colors.primary}
+                  modifiers={[size(32, 32)]}
+                />
+              ) : qrisUrl ? (
+                <>
+                  <Box
+                    contentAlignment="center"
+                    modifiers={[
+                      fillMaxWidth(),
+                      height(240),
+                      clip(Shapes.RoundedCorner(12)),
+                      background(colors.surface),
+                    ]}
+                  >
+                    <RNHostView>
+                      <Image
+                        source={{ uri: qrisUrl }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="contain"
+                        onLoad={() => setLoadedQrisUrl(qrisUrl)}
+                      />
+                    </RNHostView>
+                    {loadedQrisUrl !== qrisUrl && (
+                      <CircularWavyProgressIndicator
+                        color={colors.primary}
+                        modifiers={[size(28, 28)]}
+                      />
+                    )}
+                  </Box>
+                  <Text
+                    style={{ typography: "bodyMedium", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    QRIS terunggah · ketuk untuk ganti
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Icon source={QrCode2} tint={colors.primary} size={48} />
+                  <Text
+                    style={{ typography: "bodyMedium", fontWeight: "600" }}
+                    color={colors.onSurface}
+                  >
+                    Unggah gambar QRIS
+                  </Text>
+                  <Text
+                    style={{ typography: "bodySmall" }}
+                    color={colors.onSurfaceVariant}
+                  >
+                    Foto / screenshot QRIS dari aplikasi bank atau e-wallet
+                    kamu.
+                  </Text>
+                </>
+              )}
+            </Column>
+          </OutlinedCard>
+        </Column>
+      )}
+
+      <SheetActions
+        onCancel={onClose}
+        onSubmit={handleSave}
+        submitLabel={isEditing ? "Ubah Metode" : "Tambah Metode"}
+        enabled={canSave}
+        loading={saving}
+      />
+    </FormSheet>
   );
 }

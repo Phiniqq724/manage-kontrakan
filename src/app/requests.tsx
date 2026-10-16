@@ -1,45 +1,54 @@
-import { ButtonContent } from "@/components/ButtonContent";
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
+import { FormField } from "@/components/FormField";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
+import { ChipRow, EmptyState, IconText } from "@/components/ListBits";
+import { VoterAvatar } from "@/components/VoterAvatar";
 import { requestsApi, requestVotesApi, usersApi } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
-import { castRequestVote, createRequestAndNotify } from "@/utils/requests";
+import {
+  applyRequestVote,
+  castRequestVote,
+  createRequestAndNotify,
+  requestScore,
+  sortRequests,
+  type RequestSort,
+} from "@/utils/requests";
 import type { Database } from "@/utils/supabase-types";
+import { useHideOnScroll, useTabAction } from "@/utils/tab-action";
 import Add from "@expo/material-symbols/add.xml";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import ArrowDownward from "@expo/material-symbols/arrow_downward.xml";
 import ArrowUpward from "@expo/material-symbols/arrow_upward.xml";
 import Delete from "@expo/material-symbols/delete.xml";
 import Forum from "@expo/material-symbols/forum.xml";
-import { Host } from "@expo/ui";
+import LocalFireDepartment from "@expo/material-symbols/local_fire_department.xml";
 import {
+  AnimatedVisibility,
   Box,
-  Button,
+  Card,
   Column,
-  ExtendedFloatingActionButton,
-  HorizontalDivider,
   Icon,
   IconButton,
-  ModalBottomSheet,
-  OutlinedButton,
-  OutlinedTextField,
   PullToRefreshBox,
   Row,
   Text,
-  useMaterialColors,
+  TextButton,
 } from "@expo/ui/jetpack-compose";
 import {
-  align,
+  animateContentSize,
   background,
+  clickable,
   clip,
   fillMaxSize,
   fillMaxWidth,
   padding,
+  paddingAll,
   Shapes,
-  size,
-  verticalScroll,
   weight,
+  width,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
+import { Alert } from "react-native";
 
 type RequestRow = Database["public"]["Tables"]["requests"]["Row"];
 type RequestVoteRow = Database["public"]["Tables"]["request_votes"]["Row"];
@@ -48,19 +57,18 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
 const firstName = (fullname: string) => fullname.split(" ")[0] ?? fullname;
 
 function timeAgo(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60000);
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
   if (minutes < 1) return "baru saja";
   if (minutes < 60) return `${minutes}m lalu`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}j lalu`;
-  const days = Math.floor(hours / 24);
-  return `${days}h lalu`;
+  return `${Math.floor(hours / 24)}h lalu`;
 }
 
 export default function RequestsScreen() {
   const { user } = useAuth();
-  const colors = useMaterialColors();
+  const colors = useAppColors();
+  const hideOnScroll = useHideOnScroll();
   const isAdmin = user?.role === "admin";
 
   const [requests, setRequests] = useState<RequestRow[]>([]);
@@ -70,13 +78,14 @@ export default function RequestsScreen() {
   >({});
   const [votingId, setVotingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [sort, setSort] = useState<RequestSort>("top");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [createOpen, setCreateOpen] = useState(false);
+  useTabAction("requests", Add, () => setCreateOpen(true));
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [submitting, setSubmitting] = useState(false);
-
-  const canSubmit = title.trim().length > 0;
 
   useEffect(() => {
     loadData();
@@ -89,17 +98,10 @@ export default function RequestsScreen() {
       usersApi.getAll(),
     ]);
     if (requestsRes.data) setRequests(requestsRes.data);
-
-    const userMap: Record<string, UserRow> = {};
-    (usersRes.data ?? []).forEach((u) => {
-      userMap[u.id] = u;
-    });
-    setUsers(userMap);
-
+    setUsers(Object.fromEntries((usersRes.data ?? []).map((u) => [u.id, u])));
     const grouped: Record<string, RequestVoteRow[]> = {};
     (votesRes.data ?? []).forEach((v) => {
-      if (!grouped[v.request_id]) grouped[v.request_id] = [];
-      grouped[v.request_id].push(v);
+      (grouped[v.request_id] ??= []).push(v);
     });
     setVotesByRequest(grouped);
   }
@@ -109,51 +111,52 @@ export default function RequestsScreen() {
     loadData().finally(() => setRefreshing(false));
   };
 
-  function netScore(requestId: string): number {
-    const votes = votesByRequest[requestId] ?? [];
-    const raw = votes.reduce((sum, v) => sum + v.vote_value, 0);
-    // Individual up/downvotes are still recorded normally underneath — only
-    // the displayed/sorted aggregate is floored so a request never reads
-    // as "negative" even when downvotes outnumber upvotes.
-    return Math.max(0, raw);
-  }
+  const myVote = (requestId: string) =>
+    (votesByRequest[requestId]?.find((v) => v.user_id === user?.id)
+      ?.vote_value as 1 | -1 | undefined) ?? null;
 
-  function myVote(requestId: string): 1 | -1 | null {
-    const votes = votesByRequest[requestId] ?? [];
-    const mine = votes.find((v) => v.user_id === user?.id);
-    return (mine?.vote_value as 1 | -1 | undefined) ?? null;
-  }
-
+  /** Moves the score right away, then syncs with the server (reloading undoes it on failure). */
   async function handleVote(req: RequestRow, value: 1 | -1) {
-    if (!user) return;
+    if (!user || votingId) return;
+    const current = myVote(req.id);
     setVotingId(req.id);
+    setVotesByRequest((p) => ({
+      ...p,
+      [req.id]: applyRequestVote(p[req.id], req.id, user.id, value),
+    }));
     try {
-      await castRequestVote(req.id, user.id, value, myVote(req.id));
-      loadData();
+      await castRequestVote(req.id, user.id, value, current);
     } catch (err: any) {
       alert(err.message);
     } finally {
+      await loadData();
       setVotingId(null);
     }
   }
 
-  async function handleDelete(req: RequestRow) {
-    const { error } = await requestsApi.delete(req.id);
-    if (error) {
-      alert(error.message);
-      return;
-    }
-    loadData();
-  }
+  const confirmDelete = (req: RequestRow) =>
+    Alert.alert("Hapus request?", `"${req.title}" dan semua vote-nya akan dihapus.`, [
+      { text: "Batal", style: "cancel" },
+      {
+        text: "Hapus",
+        style: "destructive",
+        onPress: async () => {
+          const { error } = await requestsApi.delete(req.id);
+          if (error) alert(error.message);
+          else loadData();
+        },
+      },
+    ]);
 
   async function handleCreate() {
-    if (!canSubmit || !user) return;
+    if (!title.trim() || !user) return;
     setSubmitting(true);
     try {
       await createRequestAndNotify({ title, description }, user);
       setCreateOpen(false);
       setTitle("");
       setDescription("");
+      setSort("new");
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -162,14 +165,128 @@ export default function RequestsScreen() {
     }
   }
 
-  const sortedRequests = [...requests].sort((a, b) => {
-    const diff = netScore(b.id) - netScore(a.id);
-    if (diff !== 0) return diff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  const visible = sortRequests(requests, votesByRequest, sort, user?.id);
+  const mineCount = requests.filter((r) => r.creator_id === user?.id).length;
+  const unvoted = requests.filter(
+    (r) => r.creator_id !== user?.id && myVote(r.id) === null,
+  ).length;
+
+  const renderRequest = (req: RequestRow, i: number) => {
+    const votes = votesByRequest[req.id] ?? [];
+    const score = requestScore(votes);
+    const vote = myVote(req.id);
+    const open = expandedId === req.id;
+    const isTop = sort === "top" && i === 0 && score > 0;
+    const canDelete = req.creator_id === user?.id || isAdmin;
+    const creator = users[req.creator_id];
+    const supporters = votes
+      .filter((v) => v.vote_value === 1)
+      .map((v) => users[v.user_id])
+      .filter(Boolean);
+
+    const cardBg = isTop ? colors.primaryContainer : colors.surfaceContainerLow;
+    const fg = isTop ? colors.onPrimaryContainer : colors.onSurface;
+    const muted = isTop ? colors.onPrimaryContainer : colors.onSurfaceVariant;
+    // The pill fills with the user's own vote so it reads at a glance.
+    const [pillBg, pillFg] =
+      vote === 1
+        ? [colors.primary, colors.onPrimary]
+        : vote === -1
+          ? [colors.errorContainer, colors.onErrorContainer]
+          : [isTop ? colors.surfaceContainerLowest : colors.surfaceContainerHigh, colors.onSurfaceVariant];
+
+    return (
+      <Card
+        key={req.id}
+        colors={{ containerColor: cardBg }}
+        modifiers={[
+          fillMaxWidth(),
+          clip(Shapes.RoundedCorner(20)),
+          clickable(() => setExpandedId(open ? null : req.id)),
+          animateContentSize(),
+        ]}
+      >
+        <Row
+          horizontalArrangement={{ spacedBy: 12 }}
+          modifiers={[fillMaxWidth(), paddingAll(12)]}
+        >
+          <Column
+            horizontalAlignment="center"
+            modifiers={[width(48), clip(Shapes.RoundedCorner(24)), background(pillBg)]}
+          >
+            <IconButton onClick={() => handleVote(req, 1)}>
+              <Icon source={ArrowUpward} tint={pillFg} size={20} />
+            </IconButton>
+            <Text style={{ typography: "titleMedium", fontWeight: "bold" }} color={pillFg}>
+              {String(score)}
+            </Text>
+            <IconButton onClick={() => handleVote(req, -1)}>
+              <Icon source={ArrowDownward} tint={pillFg} size={20} />
+            </IconButton>
+          </Column>
+
+          <Column
+            verticalArrangement={{ spacedBy: 6 }}
+            modifiers={[weight(1), padding(0, 4, 4, 4)]}
+          >
+            {isTop && (
+              <IconText icon={LocalFireDepartment} text="Paling didukung" color={fg} bold />
+            )}
+            <Text
+              style={{ typography: "titleMedium", fontWeight: "bold" }}
+              color={fg}
+              maxLines={open ? undefined : 2}
+              overflow="ellipsis"
+            >
+              {req.title}
+            </Text>
+            {req.description ? (
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={muted}
+                maxLines={open ? undefined : 2}
+                overflow="ellipsis"
+              >
+                {req.description}
+              </Text>
+            ) : null}
+            <Row
+              verticalAlignment="center"
+              horizontalArrangement={{ spacedBy: 8 }}
+              modifiers={[fillMaxWidth(), padding(0, 4, 0, 0)]}
+            >
+              {creator && <VoterAvatar user={creator} diameter={20} ring={cardBg} />}
+              <Text style={{ typography: "labelMedium" }} color={muted} modifiers={[weight(1)]}>
+                {`${firstName(creator?.fullname ?? "Seseorang")} · ${timeAgo(req.created_at)}`}
+              </Text>
+              {supporters.length > 0 && (
+                <Row horizontalArrangement={{ spacedBy: -6 }}>
+                  {supporters.slice(0, 4).map((u) => (
+                    <VoterAvatar key={u.id} user={u} diameter={20} ring={cardBg} />
+                  ))}
+                </Row>
+              )}
+            </Row>
+            {canDelete && (
+              <AnimatedVisibility visible={open}>
+                <TextButton onClick={() => confirmDelete(req)}>
+                  <Row verticalAlignment="center" horizontalArrangement={{ spacedBy: 6 }}>
+                    <Icon source={Delete} tint={colors.error} size={18} />
+                    <Text style={{ typography: "labelLarge" }} color={colors.error}>
+                      Hapus request
+                    </Text>
+                  </Row>
+                </TextButton>
+              </AnimatedVisibility>
+            )}
+          </Column>
+        </Row>
+      </Card>
+    );
+  };
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <Box modifiers={[fillMaxSize()]}>
         <PullToRefreshBox
           isRefreshing={refreshing}
@@ -178,288 +295,92 @@ export default function RequestsScreen() {
           modifiers={[fillMaxSize(), background(colors.background)]}
         >
           <Column
-            verticalArrangement={{ spacedBy: 24 }}
-            modifiers={[
-              fillMaxSize(),
-              verticalScroll(),
-              padding(16, 56, 16, 100),
-            ]}
+            verticalArrangement={{ spacedBy: 16 }}
+            modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
           >
             <Row
               verticalAlignment="center"
               horizontalArrangement={{ spacedBy: 4 }}
               modifiers={[fillMaxWidth()]}
             >
-              <IconButton onClick={() => router.back()}>
-                <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-              </IconButton>
-              <Column
-                verticalArrangement={{ spacedBy: 2 }}
-                modifiers={[weight(1)]}
-              >
+              <BackButton />
+              <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
                 <Text
-                  style={{ typography: "titleLarge", fontWeight: "bold" }}
+                  style={{ typography: "headlineMedium", fontWeight: "bold" }}
                   color={colors.onBackground}
                 >
                   Request
                 </Text>
-                <Text
-                  style={{ typography: "bodySmall" }}
-                  color={colors.onSurfaceVariant}
-                >
-                  Usulan bebas dari anggota, vote yang kamu setuju
+                <Text style={{ typography: "bodyMedium" }} color={colors.onSurfaceVariant}>
+                  {unvoted > 0
+                    ? `${unvoted} usulan belum kamu vote`
+                    : "Usulan bebas dari anggota, vote yang kamu setuju"}
                 </Text>
               </Column>
             </Row>
 
-            {sortedRequests.length === 0 ? (
-              <Column
-                horizontalAlignment="center"
-                verticalArrangement={{ spacedBy: 12 }}
-                modifiers={[fillMaxWidth(), padding(8, 40, 8, 40)]}
-              >
-                <Box
-                  contentAlignment="center"
-                  modifiers={[
-                    size(72, 72),
-                    clip(Shapes.RoundedCorner(36)),
-                    background(colors.secondaryContainer),
-                  ]}
-                >
-                  <Icon
-                    source={Forum}
-                    tint={colors.onSecondaryContainer}
-                    size={32}
-                  />
-                </Box>
-                <Column
-                  horizontalAlignment="center"
-                  verticalArrangement={{ spacedBy: 2 }}
-                >
-                  <Text
-                    style={{ typography: "bodyLarge", fontWeight: "bold" }}
-                    color={colors.onSurface}
-                  >
-                    Belum ada request
-                  </Text>
-                  <Text
-                    style={{ typography: "bodySmall", textAlign: "center" }}
-                    color={colors.onSurfaceVariant}
-                  >
-                    Buat request baru lewat tombol di bawah.
-                  </Text>
-                </Column>
-              </Column>
+            {requests.length > 0 && (
+              <ChipRow
+                options={[
+                  ["top", "Populer"],
+                  ["new", "Terbaru"],
+                  ["mine", `Punyaku ${mineCount}`],
+                ]}
+                value={sort}
+                onChange={setSort}
+              />
+            )}
+
+            {requests.length === 0 ? (
+              <EmptyState
+                icon={Forum}
+                text="Belum ada request."
+                action="Buat request"
+                onAction={() => setCreateOpen(true)}
+              />
+            ) : visible.length === 0 ? (
+              <EmptyState
+                icon={Forum}
+                text="Kamu belum membuat request."
+                action="Buat request"
+                onAction={() => setCreateOpen(true)}
+              />
             ) : (
-              <Column
-                verticalArrangement={{ spacedBy: 4 }}
-                modifiers={[fillMaxWidth()]}
-              >
-                {sortedRequests.map((req, i) => {
-                  const score = netScore(req.id);
-                  const vote = myVote(req.id);
-                  const isVoting = votingId === req.id;
-                  const isOwn = req.creator_id === user?.id;
-                  const creator = users[req.creator_id];
-
-                  return (
-                    <Column key={req.id}>
-                      <Row
-                        verticalAlignment="center"
-                        horizontalArrangement={{ spacedBy: 12 }}
-                        modifiers={[fillMaxWidth(), padding(0, 10, 0, 10)]}
-                      >
-                        <Column
-                          horizontalAlignment="center"
-                          verticalArrangement={{ spacedBy: 0 }}
-                        >
-                          <IconButton
-                            enabled={!isVoting}
-                            onClick={() => handleVote(req, 1)}
-                          >
-                            <Icon
-                              source={ArrowUpward}
-                              tint={
-                                vote === 1
-                                  ? colors.primary
-                                  : colors.onSurfaceVariant
-                              }
-                              size={20}
-                            />
-                          </IconButton>
-                          <Text
-                            style={{
-                              typography: "labelLarge",
-                              fontWeight: "bold",
-                            }}
-                            color={
-                              score > 0
-                                ? colors.primary
-                                : colors.onSurfaceVariant
-                            }
-                          >
-                            {String(score)}
-                          </Text>
-                          <IconButton
-                            enabled={!isVoting}
-                            onClick={() => handleVote(req, -1)}
-                          >
-                            <Icon
-                              source={ArrowDownward}
-                              tint={
-                                vote === -1
-                                  ? colors.error
-                                  : colors.onSurfaceVariant
-                              }
-                              size={20}
-                            />
-                          </IconButton>
-                        </Column>
-
-                        <Column
-                          verticalArrangement={{ spacedBy: 2 }}
-                          modifiers={[weight(1)]}
-                        >
-                          <Text
-                            style={{
-                              typography: "bodyLarge",
-                              fontWeight: "600",
-                            }}
-                            color={colors.onSurface}
-                          >
-                            {req.title}
-                          </Text>
-                          {req.description && (
-                            <Text
-                              style={{ typography: "bodyMedium" }}
-                              color={colors.onSurfaceVariant}
-                            >
-                              {req.description}
-                            </Text>
-                          )}
-                          <Text
-                            style={{ typography: "labelSmall" }}
-                            color={colors.onSurfaceVariant}
-                          >
-                            {`${firstName(creator?.fullname ?? "Seseorang")} · ${timeAgo(req.created_at)}`}
-                          </Text>
-                        </Column>
-
-                        {(isOwn || isAdmin) && (
-                          <IconButton onClick={() => handleDelete(req)}>
-                            <Icon
-                              source={Delete}
-                              tint={colors.error}
-                              size={18}
-                            />
-                          </IconButton>
-                        )}
-                      </Row>
-                      {i < sortedRequests.length - 1 && (
-                        <HorizontalDivider color={colors.outlineVariant} />
-                      )}
-                    </Column>
-                  );
-                })}
+              <Column verticalArrangement={{ spacedBy: 8 }} modifiers={[fillMaxWidth()]}>
+                {visible.map(renderRequest)}
               </Column>
             )}
           </Column>
         </PullToRefreshBox>
-
-        <ExtendedFloatingActionButton
-          onClick={() => setCreateOpen(true)}
-          modifiers={[align("bottomEnd"), padding(0, 0, 20, 24)]}
-        >
-          <ExtendedFloatingActionButton.Icon>
-            <Icon source={Add} size={20} />
-          </ExtendedFloatingActionButton.Icon>
-          <ExtendedFloatingActionButton.Text>
-            <Text style={{ typography: "labelLarge", fontWeight: "bold" }}>
-              Buat Request
-            </Text>
-          </ExtendedFloatingActionButton.Text>
-        </ExtendedFloatingActionButton>
       </Box>
 
       {createOpen && (
-        <ModalBottomSheet onDismissRequest={() => setCreateOpen(false)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              padding(24, 8, 24, 32),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                Buat request baru
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                Anggota lain akan diberi tahu dan bisa vote.
-              </Text>
-            </Column>
-
-            <OutlinedTextField
-              onValueChange={setTitle}
-              singleLine
-              keyboardOptions={{ capitalization: "sentences" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>Judul</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
-
-            <OutlinedTextField
-              onValueChange={setDescription}
-              minLines={3}
-              keyboardOptions={{ capitalization: "sentences" }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedTextField.Label>
-                <Text>Deskripsi (opsional)</Text>
-              </OutlinedTextField.Label>
-            </OutlinedTextField>
-
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement={{ spacedBy: 12 }}
-              modifiers={[fillMaxWidth()]}
-            >
-              <OutlinedButton
-                onClick={() => setCreateOpen(false)}
-                modifiers={[weight(1)]}
-              >
-                <Text
-                  style={{ typography: "labelLarge" }}
-                  color={colors.primary}
-                >
-                  Batal
-                </Text>
-              </OutlinedButton>
-              <Button
-                enabled={canSubmit && !submitting}
-                onClick={handleCreate}
-                modifiers={[weight(1)]}
-              >
-                <ButtonContent
-                  loading={submitting}
-                  enabled={canSubmit}
-                  label="Buat"
-                  color={colors.onPrimary}
-                />
-              </Button>
-            </Row>
-          </Column>
-        </ModalBottomSheet>
+        <FormSheet
+          title="Buat request baru"
+          subtitle="Anggota lain akan diberi tahu dan bisa vote."
+          onClose={() => setCreateOpen(false)}
+        >
+          <FormField
+            label="Judul"
+            onValueChange={setTitle}
+            singleLine
+            keyboardOptions={{ capitalization: "sentences" }}
+          />
+          <FormField
+            label="Deskripsi (opsional)"
+            onValueChange={setDescription}
+            minLines={3}
+            keyboardOptions={{ capitalization: "sentences" }}
+          />
+          <SheetActions
+            onCancel={() => setCreateOpen(false)}
+            onSubmit={handleCreate}
+            submitLabel="Buat"
+            enabled={title.trim().length > 0}
+            loading={submitting}
+          />
+        </FormSheet>
       )}
-    </Host>
+    </AppHost>
   );
 }

@@ -1,12 +1,37 @@
 import type { NotificationResponse } from "expo-notifications";
 import { ruleRequestsApi, ruleRequestVotesApi, rulesApi, usersApi } from "../services/api";
-import { sendPushNotification } from "./notifications";
+import { sendPush } from "./notifications";
 import { supabase } from "./supabase";
 import type { Database } from "./supabase-types";
 
 type RuleRequestRow = Database["public"]["Tables"]["rule_requests"]["Row"];
 
-/** Approves a rule request: creates the rule, marks the request approved, and notifies everyone. */
+/** Tells everyone a rule request was approved. */
+const notifyApproved = async (): Promise<void> => {
+  const { data: users } = await usersApi.getAll();
+  const userIds = (users ?? []).map((u) => u.id);
+  if (userIds.length > 0) {
+    await sendPush({
+      recipients: userIds,
+      type: "rule",
+      title: "Peraturan Baru Disetujui",
+      body: "Peraturan baru telah disetujui dan ditambahkan ke daftar aturan kontrakan.",
+    });
+  }
+};
+
+/** Tells the proposer their rule request was declined. */
+const notifyDeclined = async (req: RuleRequestRow): Promise<void> => {
+  if (!req.assign_by) return;
+  await sendPush({
+    recipients: [req.assign_by],
+    type: "rule",
+    title: "Usulan Peraturan Ditolak",
+    body: "Usulan peraturan kamu belum bisa diterima saat ini.",
+  });
+};
+
+/** Admin approval: creates the rule, marks the request approved, and notifies everyone. */
 export async function approveRuleRequest(req: RuleRequestRow): Promise<void> {
   const [ruleRes, reqRes] = await Promise.all([
     rulesApi.create({
@@ -18,43 +43,21 @@ export async function approveRuleRequest(req: RuleRequestRow): Promise<void> {
   ]);
   if (ruleRes.error) throw ruleRes.error;
   if (reqRes.error) throw reqRes.error;
-
-  const { data: users } = await usersApi.getAll();
-  const tokens = (users ?? [])
-    .map((u) => u.push_token)
-    .filter((t): t is string => !!t);
-  await Promise.all(
-    tokens.map((token) =>
-      sendPushNotification(
-        token,
-        "Peraturan Baru Disetujui",
-        "Peraturan baru telah disetujui dan ditambahkan ke daftar aturan kontrakan.",
-      ),
-    ),
-  );
+  await notifyApproved();
 }
 
-/** Declines a rule request and notifies only the proposer. */
+/** Admin decline: marks the request declined and notifies only the proposer. */
 export async function declineRuleRequest(req: RuleRequestRow): Promise<void> {
   const { error } = await ruleRequestsApi.update(req.id, { status: "declined" });
   if (error) throw error;
-
-  if (req.assign_by) {
-    const { data: proposer } = await usersApi.getById(req.assign_by);
-    if (proposer?.push_token) {
-      await sendPushNotification(
-        proposer.push_token,
-        "Usulan Peraturan Ditolak",
-        "Usulan peraturan kamu belum bisa diterima saat ini.",
-      );
-    }
-  }
+  await notifyDeclined(req);
 }
 
 /**
- * Casts a member's vote, then resolves the request once every eligible (non-admin)
- * voter has voted: majority approve creates the rule and notifies everyone, majority
- * decline silently declines, and a tie is left pending for admin to resolve manually.
+ * Casts a member's vote. Once every eligible (non-admin) voter has voted, the
+ * database resolves the request (trigger on rule_request_votes): a majority
+ * approves or declines it, a tie stays pending. This only sends the matching
+ * notification afterwards; on a tie it asks the admin to decide.
  */
 export async function castVoteAndMaybeResolve(
   req: RuleRequestRow,
@@ -65,16 +68,23 @@ export async function castVoteAndMaybeResolve(
   const { error } = await ruleRequestVotesApi.cast(req.id, voterId, vote);
   if (error) throw error;
 
-  const { data: tally } = await ruleRequestVotesApi.getTally(req.id);
-  const row = tally?.[0];
-  if (!row || row.total_votes < eligibleVoterCount) return;
+  const [{ data: updated }, { data: tally }] = await Promise.all([
+    ruleRequestsApi.getById(req.id),
+    ruleRequestVotesApi.getTally(req.id),
+  ]);
 
-  if (row.approve_count > row.decline_count) {
-    await approveRuleRequest(req);
-  } else if (row.decline_count > row.approve_count) {
-    await declineRuleRequest(req);
+  if (updated?.status === "approved") return notifyApproved();
+  if (updated?.status === "declined") return notifyDeclined(req);
+
+  const row = tally?.[0];
+  if (row && row.total_votes >= eligibleVoterCount) {
+    await sendPush({
+      recipients: "admin",
+      type: "rule",
+      title: "Vote Peraturan Seri",
+      body: `Vote untuk "${req.rules}" seri. Tentukan hasilnya di panel admin.`,
+    });
   }
-  // Tie: leave status pending — admin's approve/decline panel resolves it.
 }
 
 /**

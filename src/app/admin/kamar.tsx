@@ -1,20 +1,19 @@
+import { AppHost, useAppColors } from "@/components/AppHost";
+import { BackButton } from "@/components/BackButton";
+import { useHideOnScroll } from "@/utils/tab-action";
 import { kamarApi, usersApi } from "@/services/api";
+import { FormSheet, SheetActions } from "@/components/FormSheet";
 import type { Database } from "@/utils/supabase-types";
-import ArrowBack from "@expo/material-symbols/arrow_back.xml";
 import Person from "@expo/material-symbols/person.xml";
-import { Host } from "@expo/ui";
 import {
   Box,
   Column,
   HorizontalDivider,
   Icon,
-  IconButton,
-  ModalBottomSheet,
   PullToRefreshBox,
   Row,
   Text,
   TextButton,
-  useMaterialColors,
 } from "@expo/ui/jetpack-compose";
 import {
   background,
@@ -25,10 +24,8 @@ import {
   padding,
   Shapes,
   size,
-  verticalScroll,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import { router } from "expo-router";
 import { useEffect, useState } from "react";
 
 type KamarRow = Database["public"]["Tables"]["kamar"]["Row"] & {
@@ -42,7 +39,8 @@ type KamarRow = Database["public"]["Tables"]["kamar"]["Row"] & {
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 export default function AdminKamarScreen() {
-  const colors = useMaterialColors();
+  const hideOnScroll = useHideOnScroll();
+  const colors = useAppColors();
   const [rooms, setRooms] = useState<KamarRow[]>([]);
   const [members, setMembers] = useState<UserRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +76,7 @@ export default function AdminKamarScreen() {
   );
 
   return (
-    <Host style={{ flex: 1 }}>
+    <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
         onRefresh={onRefresh}
@@ -87,16 +85,14 @@ export default function AdminKamarScreen() {
       >
         <Column
           verticalArrangement={{ spacedBy: 16 }}
-          modifiers={[fillMaxSize(), verticalScroll(), padding(16, 56, 16, 32)]}
+          modifiers={[fillMaxSize(), hideOnScroll, padding(16, 56, 16, 120)]}
         >
           <Row
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 4 }}
             modifiers={[fillMaxWidth()]}
           >
-            <IconButton onClick={() => router.back()}>
-              <Icon source={ArrowBack} tint={colors.onSurface} size={22} />
-            </IconButton>
+            <BackButton />
             <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
               <Text
                 style={{ typography: "titleLarge", fontWeight: "bold" }}
@@ -182,129 +178,99 @@ export default function AdminKamarScreen() {
       </PullToRefreshBox>
 
       {selectedRoom && (
-        <ModalBottomSheet onDismissRequest={() => setSelectedRoom(null)}>
-          <Column
-            verticalArrangement={{ spacedBy: 16 }}
-            modifiers={[
-              fillMaxWidth(),
-              verticalScroll(),
-              padding(24, 8, 24, 32),
-            ]}
-          >
-            <Column verticalArrangement={{ spacedBy: 4 }}>
-              <Text
-                style={{ typography: "headlineSmall", fontWeight: "bold" }}
-                color={colors.onSurface}
-              >
-                {`Kamar ${selectedRoom.room_code}`}
-              </Text>
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                {selectedRoom.description ?? "-"}
-              </Text>
-            </Column>
-
-            {selectedRoom.user_id && (
-              <>
-                <HorizontalDivider color={colors.outlineVariant} />
-                <Column verticalArrangement={{ spacedBy: 8 }}>
+        <FormSheet
+          title={`Kamar ${selectedRoom.room_code}`}
+          subtitle={selectedRoom.description ?? "-"}
+          onClose={() => setSelectedRoom(null)}
+        >
+          {selectedRoom.user_id && (
+            <>
+              <HorizontalDivider color={colors.outlineVariant} />
+              <Column verticalArrangement={{ spacedBy: 8 }}>
+                <Text
+                  style={{ typography: "labelLarge", fontWeight: "bold" }}
+                  color={colors.onSurfaceVariant}
+                >
+                  Penghuni saat ini
+                </Text>
+                <Row
+                  verticalAlignment="center"
+                  horizontalArrangement="spaceBetween"
+                  modifiers={[fillMaxWidth()]}
+                >
                   <Text
-                    style={{ typography: "labelLarge", fontWeight: "bold" }}
-                    color={colors.onSurfaceVariant}
+                    style={{ typography: "bodyLarge" }}
+                    color={colors.onSurface}
                   >
-                    Penghuni saat ini
+                    {selectedRoom.users?.fullname}
                   </Text>
-                  <Row
-                    verticalAlignment="center"
-                    horizontalArrangement="spaceBetween"
-                    modifiers={[fillMaxWidth()]}
-                  >
+                  <TextButton onClick={() => handleAssign(null)}>
                     <Text
-                      style={{ typography: "bodyLarge" }}
-                      color={colors.onSurface}
+                      style={{ typography: "labelLarge" }}
+                      color={colors.error}
                     >
-                      {selectedRoom.users?.fullname}
+                      Lepas
                     </Text>
-                    <TextButton onClick={() => handleAssign(null)}>
-                      <Text
-                        style={{ typography: "labelLarge" }}
-                        color={colors.error}
-                      >
-                        Lepas
-                      </Text>
-                    </TextButton>
-                  </Row>
-                </Column>
-              </>
-            )}
+                  </TextButton>
+                </Row>
+              </Column>
+            </>
+          )}
 
-            <HorizontalDivider color={colors.outlineVariant} />
+          <HorizontalDivider color={colors.outlineVariant} />
 
+          <Text
+            style={{ typography: "labelLarge", fontWeight: "bold" }}
+            color={colors.onSurfaceVariant}
+          >
+            {selectedRoom.user_id ? "Pindahkan ke" : "Tugaskan ke"}
+          </Text>
+
+          {unassignedMembers.length === 0 ? (
             <Text
-              style={{ typography: "labelLarge", fontWeight: "bold" }}
+              style={{ typography: "bodyMedium" }}
               color={colors.onSurfaceVariant}
             >
-              {selectedRoom.user_id ? "Pindahkan ke" : "Tugaskan ke"}
+              Semua penghuni sudah punya kamar.
             </Text>
+          ) : (
+            <Column>
+              {unassignedMembers.map((m, i) => (
+                <Column key={m.id}>
+                  <Row
+                    verticalAlignment="center"
+                    modifiers={[
+                      fillMaxWidth(),
+                      clickable(() => handleAssign(m.id)),
+                      padding(0, 12, 0, 12),
+                    ]}
+                  >
+                    <Column verticalArrangement={{ spacedBy: 2 }}>
+                      <Text
+                        style={{ typography: "bodyLarge" }}
+                        color={colors.onSurface}
+                      >
+                        {m.fullname}
+                      </Text>
+                      <Text
+                        style={{ typography: "bodySmall" }}
+                        color={colors.onSurfaceVariant}
+                      >
+                        {m.username}
+                      </Text>
+                    </Column>
+                  </Row>
+                  {i < unassignedMembers.length - 1 && (
+                    <HorizontalDivider color={colors.outlineVariant} />
+                  )}
+                </Column>
+              ))}
+            </Column>
+          )}
 
-            {unassignedMembers.length === 0 ? (
-              <Text
-                style={{ typography: "bodyMedium" }}
-                color={colors.onSurfaceVariant}
-              >
-                Semua penghuni sudah punya kamar.
-              </Text>
-            ) : (
-              <Column>
-                {unassignedMembers.map((m, i) => (
-                  <Column key={m.id}>
-                    <Row
-                      verticalAlignment="center"
-                      modifiers={[
-                        fillMaxWidth(),
-                        clickable(() => handleAssign(m.id)),
-                        padding(0, 12, 0, 12),
-                      ]}
-                    >
-                      <Column verticalArrangement={{ spacedBy: 2 }}>
-                        <Text
-                          style={{ typography: "bodyLarge" }}
-                          color={colors.onSurface}
-                        >
-                          {m.fullname}
-                        </Text>
-                        <Text
-                          style={{ typography: "bodySmall" }}
-                          color={colors.onSurfaceVariant}
-                        >
-                          {m.username}
-                        </Text>
-                      </Column>
-                    </Row>
-                    {i < unassignedMembers.length - 1 && (
-                      <HorizontalDivider color={colors.outlineVariant} />
-                    )}
-                  </Column>
-                ))}
-              </Column>
-            )}
-
-            <TextButton
-              onClick={() => setSelectedRoom(null)}
-              modifiers={[fillMaxWidth()]}
-            >
-              <Text
-                style={{ typography: "labelLarge" }}
-                color={colors.onSurfaceVariant}
-              >
-                Batal
-              </Text>
-            </TextButton>
-          </Column>
-        </ModalBottomSheet>
+          <SheetActions onCancel={() => setSelectedRoom(null)} />
+        </FormSheet>
       )}
-    </Host>
+    </AppHost>
   );
 }

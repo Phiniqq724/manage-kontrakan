@@ -69,3 +69,5 @@ const withAndroidMonochromeVector = (config) => {
 };
 
 module.exports = withAndroidMonochromeVector;
+// Shared with withDynamicColorIcon.js so both icons use the same clover.
+module.exports.VECTOR_XML = VECTOR_XML;
