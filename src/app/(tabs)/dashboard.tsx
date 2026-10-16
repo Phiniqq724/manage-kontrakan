@@ -13,6 +13,9 @@ import {
   usersApi,
 } from "@/services/api";
 import { ProfileMenu } from "@/components/ProfileMenu";
+import { GachaModal } from "@/components/GachaModal";
+import { MotmCard } from "@/components/MotmCard";
+import { PRIZES, type Prize } from "@/utils/motm";
 import { pagerRoute } from "@/utils/pager";
 import { QuickActionRows, QuickActionTile } from "@/components/QuickActions";
 import { useAuth } from "@/utils/auth-context";
@@ -21,6 +24,7 @@ import { useHideOnScroll } from "@/utils/tab-action";
 import { sendPush } from "@/utils/notifications";
 import type { Database } from "@/utils/supabase-types";
 import BugReport from "@expo/material-symbols/bug_report.xml";
+import Redeem from "@expo/material-symbols/redeem.xml";
 import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import Description from "@expo/material-symbols/description.xml";
 import PersonAdd from "@expo/material-symbols/person_add.xml";
@@ -283,11 +287,13 @@ export default function DashboardScreen() {
   const monthLabel = new Date()
     .toLocaleDateString("id-ID", { month: "long", year: "numeric" })
     .toUpperCase();
+  const [wonPrize, setWonPrize] = useState<Prize | null>(null);
   const dueInDays = payment?.due_date
     ? Math.round((parseTs(payment.due_date).getTime() - Date.now()) / 86400000)
     : null;
 
   return (
+    <>
     <AppHost style={{ flex: 1 }}>
       <PullToRefreshBox
         isRefreshing={refreshing}
@@ -332,9 +338,21 @@ export default function DashboardScreen() {
                   />
                 </IconButton>
               )}
+              {/* Dev only: plays the MOTM gacha with a random prize, nothing is saved. */}
+              {__DEV__ && (
+                <IconButton
+                  onClick={() =>
+                    setWonPrize(PRIZES[Math.floor(Math.random() * PRIZES.length)])
+                  }
+                >
+                  <Icon source={Redeem} tint={colors.onSurfaceVariant} size={22} />
+                </IconButton>
+              )}
               <ProfileMenu />
             </Row>
           </Row>
+
+          {user && <MotmCard userId={user.id} onWon={setWonPrize} />}
 
           {/* Tagihan card */}
           <Card
@@ -569,6 +587,8 @@ export default function DashboardScreen() {
         />
       )}
     </AppHost>
+    {wonPrize && <GachaModal won={wonPrize} onClose={() => setWonPrize(null)} />}
+    </>
   );
 }
 

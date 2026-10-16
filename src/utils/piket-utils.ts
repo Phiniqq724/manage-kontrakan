@@ -40,7 +40,7 @@ export const findNextMine = <T extends { day: string; assign_to: string | null; 
   today: string,
 ): T | null =>
   rows
-    .filter((p) => p.assign_to === userId && p.day >= today && p.status !== "done")
+    .filter((p) => p.assign_to === userId && p.day >= today && !["done", "review"].includes(p.status))
     .sort((a, b) => a.day.localeCompare(b.day))[0] ?? null;
 
 /** Indonesian relative label: "Hari ini", "Besok", or "N hari lagi". */

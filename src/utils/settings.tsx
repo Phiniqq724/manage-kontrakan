@@ -25,6 +25,7 @@ export const QUICK_ACTIONS = {
   adminRules: { label: "Usulan aturan", href: "/admin/rules", adminOnly: true },
   adminReports: { label: "Laporan", href: "/admin/reports", adminOnly: true },
   adminKamar: { label: "Kamar", href: "/admin/kamar", adminOnly: true },
+  adminPiket: { label: "Piket & MOTM", href: "/admin/piket", adminOnly: true },
 } as const;
 export type QuickActionKey = keyof typeof QUICK_ACTIONS;
 
@@ -35,7 +36,7 @@ export const quickActionLimit = (isAdmin: boolean) => (isAdmin ? 8 : 4);
 
 const DEFAULT_QUICK_ACTIONS: Record<"admin" | "member", QuickActionKey[]> = {
   member: ["members", "events", "requests", "receipts"],
-  admin: ["adminPayments", "adminRules", "adminReports", "adminKamar", "members"],
+  admin: ["adminPayments", "adminPiket", "adminRules", "adminReports", "adminKamar", "members"],
 };
 
 /**

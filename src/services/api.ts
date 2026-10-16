@@ -68,6 +68,13 @@ export const piketsApi = {
     await supabase.from("pikets").update(data).eq("id", id).select().single(),
   delete: async (id: string) =>
     await supabase.from("pikets").delete().eq("id", id),
+  /** Proof waiting for the admin's review, oldest first. */
+  getForReview: async () =>
+    await supabase
+      .from("pikets")
+      .select("*")
+      .eq("status", "review")
+      .order("day", { ascending: true }),
 };
 
 // PIKET REQUESTS API
@@ -340,4 +347,20 @@ export const receiptsApi = {
     await supabase.from("receipts").insert(data).select().single(),
   delete: async (id: string) =>
     await supabase.from("receipts").delete().eq("id", id),
+};
+
+// MEMBER OF THE MONTH API
+export const motmApi = {
+  /** All awards, newest month first. */
+  getAll: async () =>
+    await supabase
+      .from("motm_awards")
+      .select("*")
+      .order("period", { ascending: false }),
+  /** Scores for a month ("YYYY-MM"); admin only. */
+  performance: async (period: string) =>
+    await supabase.rpc("member_performance", { p_period: period }),
+  /** Draws (or returns the already drawn) prize for the winner's award. */
+  redeem: async (awardId: string) =>
+    await supabase.rpc("redeem_motm", { p_award: awardId }),
 };

@@ -101,6 +101,7 @@ describe("resolveQuickActions", () => {
     ]);
     expect(resolveQuickActions(null, true)).toEqual([
       "adminPayments",
+      "adminPiket",
       "adminRules",
       "adminReports",
       "adminKamar",

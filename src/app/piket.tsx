@@ -57,6 +57,8 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
+  review: "Dicek admin",
+  rejected: "Ditolak",
   done: "Selesai",
   absent: "Absen",
   izin: "Izin",
@@ -159,9 +161,9 @@ export default function PiketScreen() {
         currentUser?.id ?? "anon",
       );
       if (!url) return;
+      // Goes to the admin for review; it counts once approved.
       const { error } = await piketsApi.update(piket.id, {
-        status: "done",
-        finished: true,
+        status: "review",
         docs: url,
       });
       if (error) throw error;
@@ -583,8 +585,13 @@ export default function PiketScreen() {
             {dayPikets.map((p) => {
               const person = users[p.assign_to ?? ""];
               const isMe = p.assign_to === currentUser?.id;
-              // Past days are history: no finishing or swapping anymore.
-              const canAct = isMe && p.status !== "done" && p.day >= todayStr;
+              // Past days are history, except rejected proof, which can be
+              // uploaded again any time.
+              const rejected = p.status === "rejected";
+              const canAct =
+                isMe &&
+                !["done", "review"].includes(p.status) &&
+                (p.day >= todayStr || rejected);
               return (
                 <Card
                   key={p.id}
@@ -661,12 +668,20 @@ export default function PiketScreen() {
                         {STATUS_LABEL[p.status] ?? p.status}
                       </Text>
                     </Row>
+                    {isMe && rejected && p.review_note ? (
+                      <Text
+                        style={{ typography: "bodySmall" }}
+                        color={colors.error}
+                      >
+                        {`Catatan admin: ${p.review_note}`}
+                      </Text>
+                    ) : null}
                     {canAct && (
                       <Row
                         horizontalArrangement={{ spacedBy: 8 }}
                         modifiers={[fillMaxWidth()]}
                       >
-                        {p.day === todayStr && (
+                        {(p.day === todayStr || rejected) && (
                           <Button
                             enabled={!finishing}
                             onClick={() => handleFinishPiket(p)}
@@ -674,11 +689,12 @@ export default function PiketScreen() {
                           >
                             <ButtonContent
                               loading={finishing}
-                              label="Selesaikan"
+                              label={rejected ? "Upload ulang" : "Selesaikan"}
                               color={colors.onPrimary}
                             />
                           </Button>
                         )}
+{!rejected && (
                         <FilledTonalButton
                           onClick={() => setIzinPiket(p)}
                           modifiers={[weight(1)]}
@@ -690,6 +706,7 @@ export default function PiketScreen() {
                             Minta izin
                           </Text>
                         </FilledTonalButton>
+                        )}
                       </Row>
                     )}
                   </Column>

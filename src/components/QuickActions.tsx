@@ -1,3 +1,4 @@
+import FactCheck from "@expo/material-symbols/fact_check.xml";
 import { useAppColors } from "@/components/AppHost";
 import { QUICK_ACTIONS, type QuickActionKey } from "@/utils/settings";
 import AccountBalanceWallet from "@expo/material-symbols/account_balance_wallet.xml";
@@ -42,6 +43,7 @@ export const QUICK_ACTION_ICONS: Record<QuickActionKey, ImageSourcePropType> = {
   adminRules: Description,
   adminReports: Flag,
   adminKamar: Bed,
+  adminPiket: FactCheck,
 };
 
 /**

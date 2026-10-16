@@ -471,6 +471,45 @@ export type Database = {
           },
         ]
       }
+      motm_awards: {
+        Row: {
+          created_at: string
+          id: string
+          owner_bill_period: string | null
+          period: string
+          prize: string | null
+          prize_amount: number | null
+          redeemed_at: string | null
+          score: number
+          user_id: string
+          winner_bill_period: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          owner_bill_period?: string | null
+          period: string
+          prize?: string | null
+          prize_amount?: number | null
+          redeemed_at?: string | null
+          score: number
+          user_id: string
+          winner_bill_period?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          owner_bill_period?: string | null
+          period?: string
+          prize?: string | null
+          prize_amount?: number | null
+          redeemed_at?: string | null
+          score?: number
+          user_id?: string
+          winner_bill_period?: string | null
+        }
+        Relationships: []
+      }
       pikets: {
         Row: {
           assign_to: string | null
@@ -480,6 +519,9 @@ export type Database = {
           finished: boolean | null
           id: string
           modified_at: string | null
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           status: string
         }
         Insert: {
@@ -490,6 +532,9 @@ export type Database = {
           finished?: boolean | null
           id?: string
           modified_at?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
         }
         Update: {
@@ -500,6 +545,9 @@ export type Database = {
           finished?: boolean | null
           id?: string
           modified_at?: string | null
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
         }
         Relationships: [
@@ -1125,6 +1173,19 @@ export type Database = {
       }
       is_admin: { Args: never; Returns: boolean }
       is_sup_member: { Args: never; Returns: boolean }
+      member_performance: {
+        Args: { p_period: string }
+        Returns: {
+          approved: number
+          assigned: number
+          avatar_url: string | null
+          bill_status: string | null
+          fullname: string
+          score: number
+          user_id: string
+        }[]
+      }
+      redeem_motm: { Args: { p_award: string }; Returns: Json }
     }
     Enums: {
       [_ in never]: never
