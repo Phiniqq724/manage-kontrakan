@@ -9,6 +9,7 @@ import {
   getTodayStr,
   groupByDay,
   isRequestOpen,
+  isShownPiket,
   pastDays,
   relativeDay,
 } from "@/utils/piket-utils";
@@ -139,5 +140,13 @@ describe("pastDays", () => {
 
   it("is empty when nothing happened before today", () => {
     expect(pastDays({ "2026-10-16": [1] }, "2026-10-16")).toEqual([]);
+  });
+});
+
+describe("isShownPiket", () => {
+  it("hides only rejected extra pikets", () => {
+    expect(isShownPiket({ extra: true, status: "rejected" })).toBe(false);
+    expect(isShownPiket({ extra: true, status: "done" })).toBe(true);
+    expect(isShownPiket({ extra: false, status: "rejected" })).toBe(true);
   });
 });

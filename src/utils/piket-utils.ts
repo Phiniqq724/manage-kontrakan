@@ -54,6 +54,13 @@ export const findNextMine = <T extends Slot>(
     )
     .sort((a, b) => a.day.localeCompare(b.day))[0] ?? null;
 
+/**
+ * Whether a piket shows on the piket page. Rejected extras are hidden so they
+ * don't pile up; they still count toward the daily extra limit.
+ */
+export const isShownPiket = (p: { extra: boolean; status: string }): boolean =>
+  !(p.extra && p.status === "rejected");
+
 /** Extra piket a member may submit per day. */
 export const EXTRA_PER_DAY = 2;
 

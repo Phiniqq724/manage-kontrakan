@@ -12,6 +12,7 @@ import { sendPush } from "@/utils/notifications";
 import {
   buildDateStrip,
   extraBlockReason,
+  isShownPiket,
   filterMineDays,
   findNextMine,
   getTodayStr,
@@ -128,7 +129,8 @@ export default function PiketScreen() {
   };
 
   const todayStr = getTodayStr();
-  const byDay = groupByDay(pikets);
+  // Rejected extras are hidden from the page but still count for the limit.
+  const byDay = groupByDay(pikets.filter(isShownPiket));
   const piketById = Object.fromEntries(pikets.map((p) => [p.id, p]));
   // A pending request whose day passed (or whose piket got handled) is
   // expired, even before the nightly job marks it so.
@@ -142,7 +144,7 @@ export default function PiketScreen() {
   const myRequests = allRequests
     .filter((r) => r.requested_by === currentUser?.id)
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
-  const todayPikets = byDay[todayStr] ?? [];
+  const todayPikets = pikets.filter((p) => p.day === todayStr);
   const allDays = buildDateStrip(todayStr, STRIP_DAYS);
   const stripDays =
     view === "history"
