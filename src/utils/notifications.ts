@@ -25,6 +25,70 @@ export async function registerRuleVoteCategory(): Promise<void> {
   ]);
 }
 
+const PIKET_PLAN_CATEGORY = "piket_plan";
+const PIKET_PLAN_ACTIONS = { piket_ya: "ya", piket_malas: "malas" } as const;
+const PIKET_NUDGE_TYPES = ["piket_nudge", "piket_reminder"];
+
+/**
+ * Registers the Ya / Malas buttons on the 06:30 "Pulang sekolah" reminder.
+ * They open the app: without a background task, a closed app only sees the
+ * tap on its next launch, too late to skip or add that day's reminders.
+ */
+export async function registerPiketPlanCategory(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(PIKET_PLAN_CATEGORY, [
+    {
+      identifier: "piket_ya",
+      buttonTitle: "Ya",
+      options: { opensAppToForeground: true },
+    },
+    {
+      identifier: "piket_malas",
+      buttonTitle: "Malas",
+      options: { opensAppToForeground: true },
+    },
+  ]);
+}
+
+/** Maps a notification button to a piket plan answer, or null for other taps. */
+export const piketPlanAnswerFor = (
+  actionIdentifier: string,
+): "ya" | "malas" | null =>
+  PIKET_PLAN_ACTIONS[actionIdentifier as keyof typeof PIKET_PLAN_ACTIONS] ?? null;
+
+/**
+ * Saves a Ya / Malas tap. The server ignores answers for any day other than
+ * the one the reminder was sent, so a late cold-start replay is harmless.
+ */
+export async function handlePiketPlanNotificationResponse(
+  response: Notifications.NotificationResponse,
+): Promise<void> {
+  const answer = piketPlanAnswerFor(response.actionIdentifier);
+  const day = response.notification.request.content.data?.day;
+  if (!answer || typeof day !== "string") return;
+
+  const { error } = await supabase.rpc("respond_piket_plan", {
+    p_day: day,
+    p_response: answer,
+  });
+  if (error) console.error("[piket-plan-notification] failed:", error);
+}
+
+/** Clears piket reminders still sitting in the tray, e.g. after submitting proof. */
+export async function dismissPiketReminders(): Promise<void> {
+  try {
+    const presented = await Notifications.getPresentedNotificationsAsync();
+    await Promise.all(
+      presented
+        .filter((n) =>
+          PIKET_NUDGE_TYPES.includes(String(n.request.content.data?.type)),
+        )
+        .map((n) => Notifications.dismissNotificationAsync(n.request.identifier)),
+    );
+  } catch (err) {
+    console.error("[piket-reminders] dismiss failed:", err);
+  }
+}
+
 /** EAS project id from app config, used to request the Expo push token. */
 const getProjectId = (): string | undefined =>
   Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;

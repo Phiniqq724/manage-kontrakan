@@ -8,7 +8,7 @@ import { piketRequestsApi, piketsApi, usersApi } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
 import { useHideOnScroll, useTabAction } from "@/utils/tab-action";
 import { horizontalScrollFromEnd } from "../../modules/scroll-reporter";
-import { sendPush } from "@/utils/notifications";
+import { dismissPiketReminders, sendPush } from "@/utils/notifications";
 import {
   buildDateStrip,
   extraBlockReason,
@@ -214,6 +214,7 @@ export default function PiketScreen() {
           })
         : await piketsApi.submitExtra(url, note ?? undefined);
       if (error) throw error;
+      if (submitFor.own) dismissPiketReminders();
       closeSubmit();
       loadData();
     } catch (err: any) {

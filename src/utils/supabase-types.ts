@@ -1208,6 +1208,10 @@ export type Database = {
         }[]
       }
       redeem_motm: { Args: { p_award: string }; Returns: Json }
+      respond_piket_plan: {
+        Args: { p_day: string; p_response: string }
+        Returns: undefined
+      }
       respond_piket_request: {
         Args: { p_accept: boolean; p_request: string }
         Returns: string

@@ -2,6 +2,9 @@
 
 const mockGetSession = jest.fn();
 const mockUpsert = jest.fn();
+const mockRpc = jest.fn();
+const mockGetPresented = jest.fn();
+const mockDismiss = jest.fn();
 
 jest.mock("expo-device", () => ({ isDevice: true }));
 jest.mock("expo-constants", () => ({
@@ -14,16 +17,24 @@ jest.mock("expo-notifications", () => ({
   requestPermissionsAsync: jest.fn(async () => ({ status: "granted" })),
   setNotificationChannelAsync: jest.fn(async () => {}),
   getExpoPushTokenAsync: jest.fn(async () => ({ data: "ExponentPushToken[x]" })),
+  getPresentedNotificationsAsync: () => mockGetPresented(),
+  dismissNotificationAsync: (id: string) => mockDismiss(id),
   AndroidImportance: { MAX: 5 },
 }));
 jest.mock("@/utils/supabase", () => ({
   supabase: {
     auth: { getSession: () => mockGetSession() },
     from: () => ({ upsert: (...args: unknown[]) => mockUpsert(...args) }),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
-import { registerForPushNotifications } from "@/utils/notifications";
+import {
+  dismissPiketReminders,
+  handlePiketPlanNotificationResponse,
+  piketPlanAnswerFor,
+  registerForPushNotifications,
+} from "@/utils/notifications";
 
 /** Makes getSession report `userId` as the signed-in user. */
 const signedInAs = (userId: string) =>
@@ -73,5 +84,56 @@ describe("registerForPushNotifications", () => {
     await expect(registerForPushNotifications("user-a")).rejects.toThrow(
       "Gagal menyimpan push token: boom",
     );
+  });
+});
+
+/** A notification response tapped with `actionIdentifier`, carrying `data`. */
+const responseFor = (actionIdentifier: string, data: Record<string, unknown>) =>
+  ({ actionIdentifier, notification: { request: { content: { data } } } }) as any;
+
+describe("piketPlanAnswerFor", () => {
+  it("maps the Ya / Malas buttons and ignores everything else", () => {
+    expect(piketPlanAnswerFor("piket_ya")).toBe("ya");
+    expect(piketPlanAnswerFor("piket_malas")).toBe("malas");
+    expect(piketPlanAnswerFor("approve")).toBeNull();
+    expect(piketPlanAnswerFor("expo.modules.notifications.actions.DEFAULT")).toBeNull();
+  });
+});
+
+describe("handlePiketPlanNotificationResponse", () => {
+  beforeEach(() => mockRpc.mockReset().mockResolvedValue({ error: null }));
+
+  it("saves the answer for the day the reminder was sent", async () => {
+    await handlePiketPlanNotificationResponse(
+      responseFor("piket_malas", { type: "piket_nudge", day: "2026-10-23" }),
+    );
+    expect(mockRpc).toHaveBeenCalledWith("respond_piket_plan", {
+      p_day: "2026-10-23",
+      p_response: "malas",
+    });
+  });
+
+  it("ignores other buttons and reminders without a day", async () => {
+    await handlePiketPlanNotificationResponse(responseFor("approve", { day: "2026-10-23" }));
+    await handlePiketPlanNotificationResponse(responseFor("piket_ya", {}));
+    expect(mockRpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("dismissPiketReminders", () => {
+  beforeEach(() => mockDismiss.mockReset());
+
+  it("dismisses only piket reminders", async () => {
+    const presented = (id: string, type: string) => ({
+      request: { identifier: id, content: { data: { type } } },
+    });
+    mockGetPresented.mockResolvedValue([
+      presented("a", "piket_nudge"),
+      presented("b", "piket_reminder"),
+      presented("c", "piket"),
+      presented("d", "rule"),
+    ]);
+    await dismissPiketReminders();
+    expect(mockDismiss.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
   });
 });

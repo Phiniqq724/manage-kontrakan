@@ -12,7 +12,11 @@ import { AppTabBar } from "../components/AppTabBar";
 import { SystemNavBackdrop } from "../components/SystemNavBackdrop";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { AuthProvider, useAuth } from "../utils/auth-context";
-import { registerRuleVoteCategory } from "../utils/notifications";
+import {
+  handlePiketPlanNotificationResponse,
+  registerPiketPlanCategory,
+  registerRuleVoteCategory,
+} from "../utils/notifications";
 import { handleRuleVoteNotificationResponse } from "../utils/rule-requests";
 import { loadSettings, SettingsProvider, useSettings } from "../utils/settings";
 import { TabActionProvider } from "../utils/tab-action";
@@ -74,16 +78,21 @@ function RootContent() {
 
   useEffect(() => {
     registerRuleVoteCategory();
+    registerPiketPlanCategory();
+
+    const handleResponse = (response: Notifications.NotificationResponse) => {
+      handleRuleVoteNotificationResponse(response);
+      handlePiketPlanNotificationResponse(response);
+    };
 
     // Cold start: app was killed and opened by tapping a notification action.
     Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) handleRuleVoteNotificationResponse(response);
+      if (response) handleResponse(response);
     });
 
     // Foreground/backgrounded taps.
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      handleRuleVoteNotificationResponse,
-    );
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(handleResponse);
     return () => subscription.remove();
   }, []);
 
