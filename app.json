@@ -2,7 +2,7 @@
   "expo": {
     "name": "Semanggi",
     "slug": "manage-kontrakan",
-    "version": "2.2.0",
+    "version": "2.2.2",
     "orientation": "portrait",
     "icon": "./assets/images/semanggi-icon.png",
     "scheme": "managekontrakan",
@@ -89,9 +89,7 @@
       }
     },
     "owner": "mustpikeks-2",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "2.2.0",
     "updates": {
       "url": "https://u.expo.dev/968c2fca-1d0f-4f42-a469-09502a4405b8"
     }

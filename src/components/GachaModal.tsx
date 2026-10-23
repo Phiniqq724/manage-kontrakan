@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { buildReel, isRare, prizeHint, prizeLabel, REEL_ABOVE, type Prize } from "@/utils/motm";
+import {
+  buildReel,
+  isRare,
+  prizeHint,
+  prizeLabel,
+  prizesFor,
+  REEL_ABOVE,
+  type Prize,
+  type PrizeTier,
+} from "@/utils/motm";
 
 import { useAppColors } from "./AppHost";
 
@@ -51,11 +60,20 @@ const nearMiss = (travel: Animated.Value) => {
 
 /**
  * Slot-machine style reveal for the Member of the Month prize. The prize is
- * already decided by the server (`won`); the reel only animates toward it.
+ * already decided by the server (`won`); the reel only animates toward it,
+ * filled with prizes from the winner's `tier`.
  */
-export const GachaModal = ({ won, onClose }: { won: Prize; onClose: () => void }) => {
+export const GachaModal = ({
+  won,
+  tier = "normal",
+  onClose,
+}: {
+  won: Prize;
+  tier?: PrizeTier;
+  onClose: () => void;
+}) => {
   const colors = useAppColors();
-  const [reel] = useState(() => buildReel(won, 30));
+  const [reel] = useState(() => buildReel(won, 30, Math.random, prizesFor(tier)));
   const [done, setDone] = useState(false);
   const travel = useRef(new Animated.Value(rowAt(reel.length - 1))).current;
   const pop = useRef(new Animated.Value(1)).current;

@@ -68,13 +68,21 @@ export const piketsApi = {
     await supabase.from("pikets").update(data).eq("id", id).select().single(),
   delete: async (id: string) =>
     await supabase.from("pikets").delete().eq("id", id),
-  /** Proof waiting for the admin's review, oldest first. */
-  getForReview: async () =>
+  /** Submitted piket from `sinceDay` on, newest first (the admin can still reject them). */
+  getSubmittedSince: async (sinceDay: string) =>
     await supabase
       .from("pikets")
       .select("*")
-      .eq("status", "review")
-      .order("day", { ascending: true }),
+      .eq("status", "done")
+      .gte("day", sinceDay)
+      .order("day", { ascending: false })
+      .order("modified_at", { ascending: false }),
+  /** Extra piket for today: a bonus that replaces nobody. Returns the new piket id. */
+  submitExtra: async (docs: string, description?: string) =>
+    await supabase.rpc("submit_extra_piket", {
+      p_docs: docs,
+      p_description: description,
+    }),
 };
 
 // PIKET REQUESTS API
@@ -93,6 +101,12 @@ export const piketRequestsApi = {
       .single(),
   delete: async (id: string) =>
     await supabase.from("piket_requests").delete().eq("id", id),
+  /** Accept or decline an izin request; returns the final status ("expired" if it's moot). */
+  respond: async (requestId: string, accept: boolean) =>
+    await supabase.rpc("respond_piket_request", {
+      p_request: requestId,
+      p_accept: accept,
+    }),
 };
 
 // PAYMENTS API
@@ -359,7 +373,7 @@ export const motmApi = {
       .order("period", { ascending: false }),
   /** Scores for a month ("YYYY-MM"); admin only. */
   performance: async (period: string) =>
-    await supabase.rpc("member_performance", { p_period: period }),
+    await supabase.rpc("member_points", { p_period: period }),
   /** Draws (or returns the already drawn) prize for the winner's award. */
   redeem: async (awardId: string) =>
     await supabase.rpc("redeem_motm", { p_award: awardId }),

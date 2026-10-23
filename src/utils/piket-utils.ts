@@ -33,15 +33,61 @@ export const filterMineDays = <T extends { assign_to: string | null }>(
   userId: string | undefined,
 ): string[] => days.filter((d) => byDay[d]?.some((p) => p.assign_to === userId));
 
-/** Earliest unfinished row for `userId` on or after `today`, or null. */
-export const findNextMine = <T extends { day: string; assign_to: string | null; status: string }>(
+type Slot = { day: string; assign_to: string | null; status: string; extra?: boolean };
+
+/** Statuses of a scheduled piket that still has to be done. */
+const OPEN = ["pending", "izin"];
+
+/** Earliest unfinished scheduled piket for `userId` on or after `today`, or null. */
+export const findNextMine = <T extends Slot>(
   rows: T[],
   userId: string | undefined,
   today: string,
 ): T | null =>
   rows
-    .filter((p) => p.assign_to === userId && p.day >= today && !["done", "review"].includes(p.status))
+    .filter(
+      (p) =>
+        !p.extra &&
+        p.assign_to === userId &&
+        p.day >= today &&
+        !["done", "review"].includes(p.status),
+    )
     .sort((a, b) => a.day.localeCompare(b.day))[0] ?? null;
+
+/** Extra piket a member may submit per day. */
+export const EXTRA_PER_DAY = 2;
+
+/** Points per approved piket, as scored by `member_points`. */
+export const POINTS = { own: 10, extra: 5, rentOnTime: 30 } as const;
+
+/**
+ * Why `userId` can't submit an extra piket today, or null when they can.
+ * Mirrors the checks in the `submit_extra_piket` RPC: your own piket comes
+ * first, and there's a daily limit.
+ */
+export const extraBlockReason = <T extends Slot>(
+  todayRows: T[],
+  userId: string | undefined,
+): string | null => {
+  const mine = todayRows.filter((p) => p.assign_to === userId);
+  if (mine.some((p) => !p.extra && [...OPEN, "rejected"].includes(p.status)))
+    return "Selesaikan dulu piket kamu sendiri hari ini.";
+  if (mine.filter((p) => p.extra).length >= EXTRA_PER_DAY)
+    return `Kamu sudah ${EXTRA_PER_DAY} kali piket tambahan hari ini.`;
+  return null;
+};
+
+/**
+ * Whether an izin request still needs an answer: pending, and its piket is
+ * today or later and not handled yet. The server expires the rest nightly;
+ * this hides them right away.
+ */
+export const isRequestOpen = (
+  req: { status: string },
+  piket: Slot | undefined,
+  today: string,
+): boolean =>
+  req.status === "pending" && !!piket && piket.day >= today && OPEN.includes(piket.status);
 
 /** Indonesian relative label: "Hari ini", "Besok", or "N hari lagi". */
 export const relativeDay = (day: string, today: string): string => {

@@ -17,6 +17,29 @@ export const PRIZES: Prize[] = [
   RARE_PRIZE,
 ];
 
+/**
+ * Gacha tier from how far the winner's score is above the month's average,
+ * the same rule `redeem_motm` uses: 50 to 100 above is "boosted" (more 50k
+ * and 75k), over 100 above is "jackpot" (no 25k/30k at all). Awards without
+ * a stored average are "normal".
+ */
+export type PrizeTier = "normal" | "boosted" | "jackpot";
+export const prizeTier = (score: number, average: number | null): PrizeTier => {
+  const gap = score - (average ?? score);
+  return gap > 100 ? "jackpot" : gap >= 50 ? "boosted" : "normal";
+};
+
+/** Prizes that can come out of a tier (the reel only shows these). */
+export const prizesFor = (tier: PrizeTier): Prize[] =>
+  tier === "jackpot" ? PRIZES.filter((p) => p.amount >= 50000) : PRIZES;
+
+/** Told to the winner before they spin, or null for the normal tier. */
+export const TIER_HINT: Record<PrizeTier, string | null> = {
+  normal: null,
+  boosted: "Skormu jauh di atas rata-rata, peluang 50k dan 75k naik!",
+  jackpot: "Skormu lebih dari 100 di atas rata-rata, hadiahnya pasti 50k ke atas!",
+};
+
 /** Whether a prize is the rare jackpot. */
 export const isRare = (p: Prize) =>
   p.prize === RARE_PRIZE.prize && p.amount === RARE_PRIZE.amount;
@@ -53,12 +76,17 @@ export const REEL_ABOVE = 2;
 
 /**
  * The gacha reel, top to bottom: `REEL_ABOVE` random prizes, the won prize,
- * then `fillers` random prizes. The reel starts showing the last filler and
- * slides down until the won prize sits in the middle row. `random` is
- * injectable for tests.
+ * then `fillers` random prizes, all drawn from `pool`. The reel starts showing
+ * the last filler and slides down until the won prize sits in the middle row.
+ * `random` is injectable for tests.
  */
-export const buildReel = (won: Prize, fillers = 30, random = Math.random): Prize[] => {
-  const pick = () => PRIZES[Math.floor(random() * PRIZES.length)];
+export const buildReel = (
+  won: Prize,
+  fillers = 30,
+  random = Math.random,
+  pool: Prize[] = PRIZES,
+): Prize[] => {
+  const pick = () => pool[Math.floor(random() * pool.length)];
   return [
     ...Array.from({ length: REEL_ABOVE }, pick),
     won,

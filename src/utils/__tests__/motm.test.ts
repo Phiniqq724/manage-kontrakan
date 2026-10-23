@@ -1,4 +1,4 @@
-import { averageScore, buildReel, isRare, RARE_PRIZE, REEL_ABOVE, vsAverageLabel, periodLabel, periodOf, PRIZES, prizeLabel } from "../motm";
+import { averageScore, buildReel, isRare, RARE_PRIZE, REEL_ABOVE, vsAverageLabel, periodLabel, periodOf, PRIZES, prizeLabel, prizesFor, prizeTier } from "../motm";
 
 describe("motm utils", () => {
   it("lists the six prizes plus the rare one", () => {
@@ -35,5 +35,21 @@ describe("motm utils", () => {
     expect(vsAverageLabel(45, avg)).toBe("-25 di bawah rata-rata");
     expect(vsAverageLabel(70, avg)).toBe("Pas rata-rata");
     expect(averageScore([])).toBe(0);
+  });
+
+  it("picks the gacha tier from the gap to the average", () => {
+    expect(prizeTier(90, 60)).toBe("normal");
+    expect(prizeTier(110, 60)).toBe("boosted");
+    expect(prizeTier(160, 60)).toBe("boosted");
+    expect(prizeTier(161, 60)).toBe("jackpot");
+    expect(prizeTier(300, null)).toBe("normal");
+  });
+
+  it("drops 25k and 30k from the jackpot pool and reel", () => {
+    expect(prizesFor("normal")).toBe(PRIZES);
+    const pool = prizesFor("jackpot");
+    expect(pool.map(prizeLabel)).toEqual(["CASH 50k", "BILL DISC 50k", "BILL DISC 75k"]);
+    const reel = buildReel(RARE_PRIZE, 20, Math.random, pool);
+    expect(reel.every((p) => p.amount >= 50000)).toBe(true);
   });
 });

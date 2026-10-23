@@ -15,7 +15,7 @@ import {
 import { ProfileMenu } from "@/components/ProfileMenu";
 import { GachaModal } from "@/components/GachaModal";
 import { MotmCard } from "@/components/MotmCard";
-import { PRIZES, type Prize } from "@/utils/motm";
+import { PRIZES, type Prize, type PrizeTier } from "@/utils/motm";
 import { pagerRoute } from "@/utils/pager";
 import { QuickActionRows, QuickActionTile } from "@/components/QuickActions";
 import { useAuth } from "@/utils/auth-context";
@@ -287,7 +287,7 @@ export default function DashboardScreen() {
   const monthLabel = new Date()
     .toLocaleDateString("id-ID", { month: "long", year: "numeric" })
     .toUpperCase();
-  const [wonPrize, setWonPrize] = useState<Prize | null>(null);
+  const [wonPrize, setWonPrize] = useState<{ won: Prize; tier: PrizeTier } | null>(null);
   const dueInDays = payment?.due_date
     ? Math.round((parseTs(payment.due_date).getTime() - Date.now()) / 86400000)
     : null;
@@ -342,7 +342,10 @@ export default function DashboardScreen() {
               {__DEV__ && (
                 <IconButton
                   onClick={() =>
-                    setWonPrize(PRIZES[Math.floor(Math.random() * PRIZES.length)])
+                    setWonPrize({
+                      won: PRIZES[Math.floor(Math.random() * PRIZES.length)],
+                      tier: "normal",
+                    })
                   }
                 >
                   <Icon source={Redeem} tint={colors.onSurfaceVariant} size={22} />
@@ -352,7 +355,7 @@ export default function DashboardScreen() {
             </Row>
           </Row>
 
-          {user && <MotmCard userId={user.id} onWon={setWonPrize} />}
+          {user && <MotmCard userId={user.id} onWon={(won, tier) => setWonPrize({ won, tier })} />}
 
           {/* Tagihan card */}
           <Card
@@ -587,7 +590,9 @@ export default function DashboardScreen() {
         />
       )}
     </AppHost>
-    {wonPrize && <GachaModal won={wonPrize} onClose={() => setWonPrize(null)} />}
+    {wonPrize && (
+      <GachaModal won={wonPrize.won} tier={wonPrize.tier} onClose={() => setWonPrize(null)} />
+    )}
     </>
   );
 }

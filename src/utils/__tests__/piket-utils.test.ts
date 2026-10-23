@@ -2,10 +2,13 @@
 
 import {
   buildDateStrip,
+  EXTRA_PER_DAY,
+  extraBlockReason,
   filterMineDays,
   findNextMine,
   getTodayStr,
   groupByDay,
+  isRequestOpen,
   pastDays,
   relativeDay,
 } from "@/utils/piket-utils";
@@ -80,6 +83,43 @@ describe("findNextMine", () => {
     const rows = [row("2026-10-20", "a"), row("2026-10-15", "a"), row("2026-10-17", "a", "done"), row("2026-10-18", "a")];
     expect(findNextMine(rows, "a", "2026-10-16")?.day).toBe("2026-10-18");
     expect(findNextMine(rows, "z", "2026-10-16")).toBeNull();
+  });
+
+  it("skips extra piket", () => {
+    const rows = [
+      { ...row("2026-10-16", "a", "rejected"), extra: true },
+      row("2026-10-19", "a"),
+    ];
+    expect(findNextMine(rows, "a", "2026-10-16")?.day).toBe("2026-10-19");
+  });
+});
+
+describe("extra piket", () => {
+  const extra = (assignTo: string, status = "done") => ({ ...row("2026-10-16", assignTo, status), extra: true });
+
+  it("asks you to finish your own piket first", () => {
+    expect(extraBlockReason([row("2026-10-16", "a")], "a")).toMatch(/sendiri/);
+    expect(extraBlockReason([row("2026-10-16", "a", "rejected")], "a")).toMatch(/sendiri/);
+    expect(extraBlockReason([row("2026-10-16", "a", "done")], "a")).toBeNull();
+  });
+
+  it("caps extra piket per day, rejected ones included", () => {
+    const one = [extra("a")];
+    const full = Array.from({ length: EXTRA_PER_DAY }, (_, i) => extra("a", i ? "rejected" : "done"));
+    expect(extraBlockReason(one, "a")).toBeNull();
+    expect(extraBlockReason(full, "a")).toMatch(/tambahan/);
+    expect(extraBlockReason(full, "b")).toBeNull();
+  });
+});
+
+describe("isRequestOpen", () => {
+  it("hides requests whose day passed or whose piket is handled", () => {
+    const pending = { status: "pending" };
+    expect(isRequestOpen(pending, row("2026-10-16", "a"), "2026-10-16")).toBe(true);
+    expect(isRequestOpen(pending, row("2026-10-15", "a"), "2026-10-16")).toBe(false);
+    expect(isRequestOpen(pending, row("2026-10-17", "a", "done"), "2026-10-16")).toBe(false);
+    expect(isRequestOpen(pending, undefined, "2026-10-16")).toBe(false);
+    expect(isRequestOpen({ status: "accepted" }, row("2026-10-17", "a"), "2026-10-16")).toBe(false);
   });
 });
 

@@ -2,7 +2,15 @@ import { useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
 import { motmApi, usersApi } from "@/services/api";
-import { periodLabel, periodOf, prizeLabel, type Prize } from "@/utils/motm";
+import {
+  periodLabel,
+  periodOf,
+  prizeLabel,
+  prizeTier,
+  TIER_HINT,
+  type Prize,
+  type PrizeTier,
+} from "@/utils/motm";
 import type { Database } from "@/utils/supabase-types";
 import WorkspacePremium from "@expo/material-symbols/workspace_premium.xml";
 import { Button, Card, Column, Icon, Row, Text } from "@expo/ui/jetpack-compose";
@@ -22,14 +30,15 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
 /**
  * Beranda card for last month's Member of the Month, shown to everyone during
  * the following month. The winner gets an "Ambil hadiah" button; the drawn
- * prize is handed to `onWon` so the page can play the gacha.
+ * prize (and the winner's gacha tier) is handed to `onWon` so the page can
+ * play the gacha.
  */
 export const MotmCard = ({
   userId,
   onWon,
 }: {
   userId: string;
-  onWon: (prize: Prize) => void;
+  onWon: (prize: Prize, tier: PrizeTier) => void;
 }) => {
   const colors = useAppColors();
   const [award, setAward] = useState<AwardRow | null>(null);
@@ -50,6 +59,7 @@ export const MotmCard = ({
   if (!award || !winner) return null;
 
   const mine = award.user_id === userId;
+  const tier = prizeTier(award.score, award.average);
   const prize =
     award.prize && award.prize_amount
       ? ({ prize: award.prize, amount: award.prize_amount } as Prize)
@@ -62,7 +72,7 @@ export const MotmCard = ({
       if (error) throw error;
       const won = data as Prize;
       setAward((a) => a && { ...a, prize: won.prize, prize_amount: won.amount });
-      onWon(won);
+      onWon(won, tier);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -103,7 +113,7 @@ export const MotmCard = ({
               {prize
                 ? `Hadiah: ${prizeLabel(prize)}`
                 : mine
-                  ? "Performa terbaik bulan lalu. Ambil hadiahmu!"
+                  ? (TIER_HINT[tier] ?? "Performa terbaik bulan lalu. Ambil hadiahmu!")
                   : "Performa terbaik bulan lalu. Selamat!"}
             </Text>
           </Column>

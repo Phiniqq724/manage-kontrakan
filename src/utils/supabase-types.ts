@@ -473,6 +473,7 @@ export type Database = {
       }
       motm_awards: {
         Row: {
+          average: number | null
           created_at: string
           id: string
           owner_bill_period: string | null
@@ -485,6 +486,7 @@ export type Database = {
           winner_bill_period: string | null
         }
         Insert: {
+          average?: number | null
           created_at?: string
           id?: string
           owner_bill_period?: string | null
@@ -497,6 +499,7 @@ export type Database = {
           winner_bill_period?: string | null
         }
         Update: {
+          average?: number | null
           created_at?: string
           id?: string
           owner_bill_period?: string | null
@@ -515,7 +518,9 @@ export type Database = {
           assign_to: string | null
           created_at: string | null
           day: string
+          description: string | null
           docs: string | null
+          extra: boolean
           finished: boolean | null
           id: string
           modified_at: string | null
@@ -528,7 +533,9 @@ export type Database = {
           assign_to?: string | null
           created_at?: string | null
           day: string
+          description?: string | null
           docs?: string | null
+          extra?: boolean
           finished?: boolean | null
           id?: string
           modified_at?: string | null
@@ -541,7 +548,9 @@ export type Database = {
           assign_to?: string | null
           created_at?: string | null
           day?: string
+          description?: string | null
           docs?: string | null
+          extra?: boolean
           finished?: boolean | null
           id?: string
           modified_at?: string | null
@@ -1185,7 +1194,28 @@ export type Database = {
           user_id: string
         }[]
       }
+      member_points: {
+        Args: { p_period: string }
+        Returns: {
+          approved: number
+          assigned: number
+          avatar_url: string | null
+          bill_status: string | null
+          extra: number
+          fullname: string
+          score: number
+          user_id: string
+        }[]
+      }
       redeem_motm: { Args: { p_award: string }; Returns: Json }
+      respond_piket_request: {
+        Args: { p_accept: boolean; p_request: string }
+        Returns: string
+      }
+      submit_extra_piket: {
+        Args: { p_description?: string; p_docs: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

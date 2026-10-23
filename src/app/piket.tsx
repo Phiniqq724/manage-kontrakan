@@ -6,22 +6,26 @@ import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { CardLabel } from "@/components/SettingsCard";
 import { piketRequestsApi, piketsApi, usersApi } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
-import { useHideOnScroll } from "@/utils/tab-action";
+import { useHideOnScroll, useTabAction } from "@/utils/tab-action";
 import { horizontalScrollFromEnd } from "../../modules/scroll-reporter";
 import { sendPush } from "@/utils/notifications";
 import {
   buildDateStrip,
+  extraBlockReason,
   filterMineDays,
   findNextMine,
   getTodayStr,
   groupByDay,
+  isRequestOpen,
   pastDays,
   parseDay,
+  POINTS,
   relativeDay,
 } from "@/utils/piket-utils";
 import type { Database } from "@/utils/supabase-types";
 import { captureAndUploadImage } from "@/utils/upload";
 import Check from "@expo/material-symbols/check.xml";
+import CleaningServices from "@expo/material-symbols/cleaning_services.xml";
 import Close from "@expo/material-symbols/close.xml";
 import {
   Button,
@@ -57,7 +61,7 @@ type UserRow = Database["public"]["Tables"]["users"]["Row"];
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Menunggu",
-  review: "Dicek admin",
+  review: "Selesai",
   rejected: "Ditolak",
   done: "Selesai",
   absent: "Absen",
@@ -67,6 +71,7 @@ const REQUEST_STATUS: Record<string, string> = {
   pending: "Menunggu",
   accepted: "Diterima",
   declined: "Ditolak",
+  expired: "Kedaluwarsa",
 };
 const STRIP_DAYS = 21;
 const fmtDay = (day: string, opts: Intl.DateTimeFormatOptions) =>
@@ -79,8 +84,7 @@ export default function PiketScreen() {
 
   const [pikets, setPikets] = useState<PiketRow[]>([]);
   const [users, setUsers] = useState<Record<string, UserRow>>({});
-  const [requests, setRequests] = useState<PiketRequestRow[]>([]);
-  const [myRequests, setMyRequests] = useState<PiketRequestRow[]>([]);
+  const [allRequests, setAllRequests] = useState<PiketRequestRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [view, setView] = useState<"all" | "mine" | "history">("all");
@@ -90,6 +94,12 @@ export default function PiketScreen() {
   const [reason, setReason] = useState("");
   const [replacementId, setReplacementId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Submit sheet: your own piket (`own`), or an extra one for today (null).
+  const [submitFor, setSubmitFor] = useState<{ own: PiketRow | null } | null>(null);
+  const [description, setDescription] = useState("");
+
+  const isAdmin = currentUser?.role === "admin";
 
   useEffect(() => {
     loadData();
@@ -103,17 +113,7 @@ export default function PiketScreen() {
     ]);
     setUsers(Object.fromEntries((userRes.data ?? []).map((u) => [u.id, u])));
     setPikets(piketRes.data ?? []);
-    const allRequests = reqRes.data ?? [];
-    setRequests(
-      allRequests.filter(
-        (r) => r.assign_to === currentUser?.id && r.status === "pending",
-      ),
-    );
-    setMyRequests(
-      allRequests
-        .filter((r) => r.requested_by === currentUser?.id)
-        .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? "")),
-    );
+    setAllRequests(reqRes.data ?? []);
   }
 
   const onRefresh = () => {
@@ -123,6 +123,20 @@ export default function PiketScreen() {
 
   const todayStr = getTodayStr();
   const byDay = groupByDay(pikets);
+  const piketById = Object.fromEntries(pikets.map((p) => [p.id, p]));
+  // A pending request whose day passed (or whose piket got handled) is
+  // expired, even before the nightly job marks it so.
+  const requestOpen = (r: PiketRequestRow) =>
+    isRequestOpen(r, piketById[r.piket_id ?? ""], todayStr);
+  const requestStatus = (r: PiketRequestRow) =>
+    r.status === "pending" && !requestOpen(r) ? "expired" : r.status;
+  const requests = allRequests.filter(
+    (r) => r.assign_to === currentUser?.id && requestOpen(r),
+  );
+  const myRequests = allRequests
+    .filter((r) => r.requested_by === currentUser?.id)
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
+  const todayPikets = byDay[todayStr] ?? [];
   const allDays = buildDateStrip(todayStr, STRIP_DAYS);
   const stripDays =
     view === "history"
@@ -147,13 +161,35 @@ export default function PiketScreen() {
   const shownRequests =
     view === "history"
       ? myRequests
-      : myRequests.filter((r) => r.status === "pending");
+      : myRequests.filter(requestOpen);
   const myNext = findNextMine(pikets, currentUser?.id, todayStr);
   const otherMembers = Object.values(users).filter(
     (u) => u.id !== currentUser?.id && u.role !== "admin",
   );
 
-  async function handleFinishPiket(piket: PiketRow) {
+  const openExtra = () => {
+    const reason = extraBlockReason(todayPikets, currentUser?.id);
+    if (reason) {
+      alert(reason);
+      return;
+    }
+    setSubmitFor({ own: null });
+  };
+
+  // Anyone but the admin can do an extra piket today from the FAB.
+  useTabAction("piket", CleaningServices, openExtra, !!currentUser && !isAdmin);
+
+  const closeSubmit = () => {
+    setSubmitFor(null);
+    setDescription("");
+  };
+
+  /**
+   * Takes the proof photo and submits: your own piket (or a rejected one
+   * again), or an extra one for today. Both count right away.
+   */
+  async function handleSubmitPiket() {
+    if (!submitFor) return;
     setFinishing(true);
     try {
       const url = await captureAndUploadImage(
@@ -161,12 +197,16 @@ export default function PiketScreen() {
         currentUser?.id ?? "anon",
       );
       if (!url) return;
-      // Goes to the admin for review; it counts once approved.
-      const { error } = await piketsApi.update(piket.id, {
-        status: "review",
-        docs: url,
-      });
+      const note = description.trim() || null;
+      const { error } = submitFor.own
+        ? await piketsApi.update(submitFor.own.id, {
+            status: "done",
+            docs: url,
+            description: note,
+          })
+        : await piketsApi.submitExtra(url, note ?? undefined);
       if (error) throw error;
+      closeSubmit();
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -177,18 +217,9 @@ export default function PiketScreen() {
 
   async function handleRespondRequest(req: PiketRequestRow, accept: boolean) {
     try {
-      const { error: reqError } = await piketRequestsApi.update(req.id, {
-        status: accept ? "accepted" : "declined",
-      });
-      if (reqError) throw reqError;
-
-      if (accept && req.piket_id) {
-        const { error: piketError } = await piketsApi.update(req.piket_id, {
-          assign_to: currentUser!.id,
-          status: "izin",
-        });
-        if (piketError) throw piketError;
-      }
+      const { data, error } = await piketRequestsApi.respond(req.id, accept);
+      if (error) throw error;
+      if (data === "expired") alert("Permintaan ini sudah kedaluwarsa.");
       loadData();
     } catch (err: any) {
       alert(err.message);
@@ -433,7 +464,8 @@ export default function PiketScreen() {
               {shownRequests.map((req) => {
                 const day = pikets.find((p) => p.id === req.piket_id)?.day;
                 const replacement = users[req.assign_to ?? ""];
-                const pending = req.status === "pending";
+                const status = requestStatus(req);
+                const pending = status === "pending";
                 return (
                   <Row
                     key={req.id}
@@ -480,9 +512,11 @@ export default function PiketScreen() {
                       color={
                         pending
                           ? colors.onSecondaryContainer
-                          : req.status === "accepted"
+                          : status === "accepted"
                             ? colors.primary
-                            : colors.error
+                            : status === "expired"
+                              ? colors.onSurfaceVariant
+                              : colors.error
                       }
                       modifiers={[
                         clip(Shapes.RoundedCorner(12)),
@@ -494,7 +528,7 @@ export default function PiketScreen() {
                         padding(10, 4, 10, 4),
                       ]}
                     >
-                      {REQUEST_STATUS[req.status] ?? req.status}
+                      {REQUEST_STATUS[status] ?? status}
                     </Text>
                   </Row>
                 );
@@ -592,6 +626,7 @@ export default function PiketScreen() {
                 isMe &&
                 !["done", "review"].includes(p.status) &&
                 (p.day >= todayStr || rejected);
+              const note = p.extra ? "Piket tambahan" : null;
               return (
                 <Card
                   key={p.id}
@@ -668,6 +703,26 @@ export default function PiketScreen() {
                         {STATUS_LABEL[p.status] ?? p.status}
                       </Text>
                     </Row>
+                    {note || p.description ? (
+                      <Column verticalArrangement={{ spacedBy: 2 }}>
+                        {note ? (
+                          <Text
+                            style={{ typography: "labelMedium", fontWeight: "bold" }}
+                            color={colors.primary}
+                          >
+                            {note}
+                          </Text>
+                        ) : null}
+                        {p.description ? (
+                          <Text
+                            style={{ typography: "bodySmall" }}
+                            color={colors.onSurfaceVariant}
+                          >
+                            {p.description}
+                          </Text>
+                        ) : null}
+                      </Column>
+                    ) : null}
                     {isMe && rejected && p.review_note ? (
                       <Text
                         style={{ typography: "bodySmall" }}
@@ -684,17 +739,17 @@ export default function PiketScreen() {
                         {(p.day === todayStr || rejected) && (
                           <Button
                             enabled={!finishing}
-                            onClick={() => handleFinishPiket(p)}
+                            onClick={() => setSubmitFor({ own: p })}
                             modifiers={[weight(1)]}
                           >
                             <ButtonContent
-                              loading={finishing}
+                              loading={finishing && submitFor?.own?.id === p.id}
                               label={rejected ? "Upload ulang" : "Selesaikan"}
                               color={colors.onPrimary}
                             />
                           </Button>
                         )}
-{!rejected && (
+                        {!rejected && !p.extra && (
                         <FilledTonalButton
                           onClick={() => setIzinPiket(p)}
                           modifiers={[weight(1)]}
@@ -716,6 +771,34 @@ export default function PiketScreen() {
           </Column>
         </Column>
       </PullToRefreshBox>
+
+      {/* Submit sheet: own piket or an extra one */}
+      {submitFor && (
+        <FormSheet
+          title={submitFor.own ? "Selesaikan piket" : "Piket tambahan"}
+          subtitle={
+            submitFor.own
+              ? `${fmtDay(submitFor.own.day, { weekday: "long", day: "numeric", month: "long" })} · +${POINTS.own} poin`
+              : `Hari ini · +${POINTS.extra} poin`
+          }
+          onClose={closeSubmit}
+        >
+
+          <FormField
+            label="Keterangan (opsional)"
+            onValueChange={setDescription}
+            minLines={2}
+            keyboardOptions={{ capitalization: "sentences" }}
+          />
+
+          <SheetActions
+            onCancel={closeSubmit}
+            onSubmit={handleSubmitPiket}
+            submitLabel="Foto & kirim"
+            loading={finishing}
+          />
+        </FormSheet>
+      )}
 
       {/* Minta izin sheet */}
       {izinPiket && (
