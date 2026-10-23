@@ -5,6 +5,7 @@ import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { FormField } from "@/components/FormField";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { ButtonContent } from "@/components/ButtonContent";
+import { InfoDialog } from "@/components/InfoDialog";
 import { AddAccountSheet } from "@/components/LinkedAccountSheet";
 import { ReportIssueSheet } from "@/components/ReportIssueSheet";
 import { useAccountActions } from "@/utils/account-actions";
@@ -670,6 +671,10 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
   const colors = useAppColors();
   const [opening, setOpening] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Result of a manual OTA check that didn't restart the app.
+  const [otaResult, setOtaResult] = useState<
+    { title: string; text?: string; ok: boolean } | null
+  >(null);
   const updateAvailable =
     !!latest && isNewerVersion(CURRENT_VERSION, latest.version);
 
@@ -698,9 +703,9 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
     setChecking(true);
     try {
       if ((await fetchLatestUpdate()) === "downloaded") await applyUpdate();
-      else alert("Kamu sudah di versi terbaru.");
+      else setOtaResult({ title: "Sudah versi terbaru", ok: true });
     } catch (err: any) {
-      alert(err.message);
+      setOtaResult({ title: "Gagal cek pembaruan", text: err.message, ok: false });
     } finally {
       setChecking(false);
     }
@@ -783,6 +788,15 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
               color={colors.primary}
             />
           </OutlinedButton>
+        )}
+
+        {otaResult && (
+          <InfoDialog
+            title={otaResult.title}
+            text={otaResult.text}
+            icon={otaResult.ok ? CheckCircle : undefined}
+            onClose={() => setOtaResult(null)}
+          />
         )}
       </Column>
     </OutlinedCard>
