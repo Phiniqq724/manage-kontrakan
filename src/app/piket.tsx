@@ -28,6 +28,7 @@ import Check from "@expo/material-symbols/check.xml";
 import CleaningServices from "@expo/material-symbols/cleaning_services.xml";
 import Close from "@expo/material-symbols/close.xml";
 import {
+  Box,
   Button,
   Card,
   Column,
@@ -36,6 +37,7 @@ import {
   Icon,
   IconButton,
   PullToRefreshBox,
+  RNHostView,
   Row,
   Shape,
   Text,
@@ -46,6 +48,7 @@ import {
   clip,
   fillMaxSize,
   fillMaxWidth,
+  height,
   horizontalScroll,
   padding,
   paddingAll,
@@ -54,6 +57,7 @@ import {
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { useEffect, useState } from "react";
+import { Image } from "react-native";
 
 type PiketRow = Database["public"]["Tables"]["pikets"]["Row"];
 type PiketRequestRow = Database["public"]["Tables"]["piket_requests"]["Row"];
@@ -100,6 +104,8 @@ export default function PiketScreen() {
   const [description, setDescription] = useState("");
 
   const isAdmin = currentUser?.role === "admin";
+  // Piket opened in the detail sheet (photo + description).
+  const [viewing, setViewing] = useState<PiketRow | null>(null);
 
   useEffect(() => {
     loadData();
@@ -638,7 +644,13 @@ export default function PiketScreen() {
                       ? colors.primary
                       : colors.surfaceContainerLow,
                   }}
-                  modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(18))]}
+                  modifiers={[
+                    fillMaxWidth(),
+                    clip(Shapes.RoundedCorner(18)),
+                    ...(p.docs || p.description
+                      ? [clickable(() => setViewing(p))]
+                      : []),
+                  ]}
                 >
                   <Column
                     verticalArrangement={{ spacedBy: 12 }}
@@ -772,13 +784,52 @@ export default function PiketScreen() {
         </Column>
       </PullToRefreshBox>
 
+      {/* Piket detail: what they did (photo + description) */}
+      {viewing && (
+        <FormSheet
+          title={users[viewing.assign_to ?? ""]?.fullname ?? "Piket"}
+          subtitle={`${fmtDay(viewing.day, { weekday: "long", day: "numeric", month: "long" })}${viewing.extra ? " · Piket tambahan" : ""}`}
+          onClose={() => setViewing(null)}
+        >
+          {viewing.docs ? (
+            <Box
+              modifiers={[
+                fillMaxWidth(),
+                height(320),
+                clip(Shapes.RoundedCorner(16)),
+                background(colors.surfaceContainerHighest),
+              ]}
+            >
+              <RNHostView>
+                <Image
+                  source={{ uri: viewing.docs }}
+                  style={{ width: "100%", height: "100%" }}
+                  resizeMode="cover"
+                />
+              </RNHostView>
+            </Box>
+          ) : null}
+          {viewing.description ? (
+            <Text style={{ typography: "bodyLarge" }} color={colors.onSurface}>
+              {viewing.description}
+            </Text>
+          ) : null}
+        </FormSheet>
+      )}
+
       {/* Submit sheet: own piket or an extra one */}
       {submitFor && (
         <FormSheet
-          title={submitFor.own ? "Selesaikan piket" : "Piket tambahan"}
+          title={
+            !submitFor.own
+              ? "Piket tambahan"
+              : submitFor.own.status === "rejected"
+                ? "Upload ulang"
+                : "Selesaikan piket"
+          }
           subtitle={
             submitFor.own
-              ? `${fmtDay(submitFor.own.day, { weekday: "long", day: "numeric", month: "long" })} · +${POINTS.own} poin`
+              ? `${fmtDay(submitFor.own.day, { weekday: "long", day: "numeric", month: "long" })} · +${submitFor.own.extra ? POINTS.extra : POINTS.own} poin`
               : `Hari ini · +${POINTS.extra} poin`
           }
           onClose={closeSubmit}

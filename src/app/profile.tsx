@@ -30,6 +30,7 @@ import {
   usersApi,
 } from "@/services/api";
 import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
+import { applyUpdate, fetchLatestUpdate, otaEnabled } from "@/utils/ota";
 import { useAuth } from "@/utils/auth-context";
 import { unlinkAccount } from "@/utils/multi-session";
 import { seedTextField } from "@/utils/seed-text-field";
@@ -668,6 +669,7 @@ function InfoRow({
 function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
   const colors = useAppColors();
   const [opening, setOpening] = useState(false);
+  const [checking, setChecking] = useState(false);
   const updateAvailable =
     !!latest && isNewerVersion(CURRENT_VERSION, latest.version);
 
@@ -688,6 +690,19 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
       alert(err.message);
     } finally {
       setOpening(false);
+    }
+  };
+
+  // Manual OTA check: restarts straight into a new update, if any.
+  const handleCheckOta = async () => {
+    setChecking(true);
+    try {
+      if ((await fetchLatestUpdate()) === "downloaded") await applyUpdate();
+      else alert("Kamu sudah di versi terbaru.");
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -753,6 +768,21 @@ function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
               </Text>
             </Row>
           </Button>
+        )}
+
+        {!updateAvailable && otaEnabled() && (
+          <OutlinedButton
+            enabled={!checking}
+            onClick={handleCheckOta}
+            modifiers={[fillMaxWidth()]}
+          >
+            <ButtonContent
+              loading={checking}
+              enabled={!checking}
+              label="Cek pembaruan"
+              color={colors.primary}
+            />
+          </OutlinedButton>
         )}
       </Column>
     </OutlinedCard>

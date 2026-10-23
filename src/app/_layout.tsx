@@ -10,6 +10,7 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import * as SystemUI from "expo-system-ui";
 import { AppTabBar } from "../components/AppTabBar";
 import { SystemNavBackdrop } from "../components/SystemNavBackdrop";
+import { UpdateBanner } from "../components/UpdateBanner";
 import { AuthProvider, useAuth } from "../utils/auth-context";
 import { registerRuleVoteCategory } from "../utils/notifications";
 import { handleRuleVoteNotificationResponse } from "../utils/rule-requests";
@@ -128,6 +129,8 @@ function RootContent() {
         <SystemNavBackdrop />
         {/* One floating navbar over every signed-in page. */}
           <AppTabBar />
+          {/* "Pembaruan siap" bar once an OTA update has downloaded. */}
+          <UpdateBanner />
         </TabActionProvider>
       </AuthProvider>
     </KeyboardProvider>
