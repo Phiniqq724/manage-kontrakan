@@ -30,3 +30,37 @@ export function readableOn(hex: string): "#000000" | "#ffffff" {
   // Contrast against black beats contrast against white above ~0.18.
   return luminance > 0.179 ? "#000000" : "#ffffff";
 }
+
+export type Hsv = { h: number; s: number; v: number };
+
+/**
+ * HSV to hex. `h` in degrees (wrapped into 0-360), `s` and `v` from 0 to 1
+ * (clamped), e.g. { h: 0, s: 1, v: 1 } -> "#ff0000", any h with s 0 -> grey.
+ */
+export function hsvToHex({ h, s, v }: Hsv): string {
+  const hue = ((h % 360) + 360) % 360;
+  const sat = Math.min(1, Math.max(0, s));
+  const val = Math.min(1, Math.max(0, v));
+  const channel = (n: number) => {
+    const k = (n + hue / 60) % 6;
+    const c = val - val * sat * Math.max(0, Math.min(k, 4 - k, 1));
+    return Math.round(c * 255).toString(16).padStart(2, "0");
+  };
+  return `#${channel(5)}${channel(3)}${channel(1)}`;
+}
+
+/** Hex ("#rrggbb", case-insensitive) to HSV; null for anything else. Greys get hue 0. */
+export function hexToHsv(hex: string): Hsv | null {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  let h = 0;
+  if (d > 0) {
+    if (max === r) h = 60 * (((g - b) / d) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else h = 60 * ((r - g) / d + 4);
+  }
+  return { h: (h + 360) % 360, s: max === 0 ? 0 : d / max, v: max };
+}

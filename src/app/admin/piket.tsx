@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { BackButton } from "@/components/BackButton";
@@ -104,6 +105,7 @@ export default function AdminPiketScreen() {
   }, [period]);
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     Promise.all([
       loadData(),
@@ -123,6 +125,7 @@ export default function AdminPiketScreen() {
       setRejecting(null);
       setNote("");
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setBusyId(null);

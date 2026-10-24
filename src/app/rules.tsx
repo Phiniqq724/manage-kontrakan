@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
 import { FormField } from "@/components/FormField";
@@ -200,6 +201,7 @@ export default function RulesScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -213,7 +215,9 @@ export default function RulesScreen() {
     setVoterIds((p) => ({ ...p, [req.id]: [...(p[req.id] ?? []), user.id] }));
     try {
       await castVoteAndMaybeResolve(req, user.id, vote, eligibleVoterCount);
+      haptics.success();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       await loadData();
@@ -252,6 +256,7 @@ export default function RulesScreen() {
         status: "pending",
       });
       if (error) throw error;
+      haptics.success();
       setProposeOpen(false);
       setRuleText("");
       setPriority("medium");
@@ -268,6 +273,7 @@ export default function RulesScreen() {
         });
       }
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);

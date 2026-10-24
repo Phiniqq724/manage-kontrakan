@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { FormField } from "@/components/FormField";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
@@ -98,6 +99,7 @@ export const AddMemberSheet = ({
         const body = await error.context?.json?.().catch(() => null);
         throw new Error(body?.error ?? error.message);
       }
+      haptics.success();
       alert(
         `${fullname.trim()} ditambahkan.` +
           (customPassword ? "" : ` Password awal: ${DEFAULT_PASSWORD}`),
@@ -105,6 +107,7 @@ export const AddMemberSheet = ({
       onAdded();
       onClose();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);
@@ -214,7 +217,10 @@ export const AddMemberSheet = ({
         verticalAlignment="center"
         horizontalArrangement={{ spacedBy: 8 }}
         modifiers={[
-          toggleable(customPassword, () => setCustomPassword((v) => !v), {
+          toggleable(customPassword, () => {
+            haptics.toggle(!customPassword);
+            setCustomPassword((v) => !v);
+          }, {
             role: "checkbox",
           }),
         ]}

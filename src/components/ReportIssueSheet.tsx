@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { FormField } from "@/components/FormField";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
@@ -29,6 +30,7 @@ export function ReportIssueSheet({
       const url = await pickAndUploadImage("report-evidence", userId);
       if (url) setEvidenceUri(url);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   };
@@ -48,6 +50,7 @@ export function ReportIssueSheet({
         docs: evidenceUri,
       });
       if (error) throw error;
+      haptics.success();
       onClose();
       await sendPush({
         recipients: "admin",
@@ -55,6 +58,7 @@ export function ReportIssueSheet({
         body: `${userFullname} membuat laporan: ${title}.`,
       });
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);

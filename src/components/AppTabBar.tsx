@@ -4,7 +4,9 @@ import {
   piketsApi,
   ruleRequestsApi,
   ruleRequestVotesApi,
+  shoppingApi,
 } from "@/services/api";
+import { shoppingBadgeCount } from "@/utils/shopping";
 import { useAuth } from "@/utils/auth-context";
 import { getTodayStr } from "@/utils/piket-utils";
 import Home from "@expo/material-symbols/home.xml";
@@ -30,11 +32,12 @@ import {
   clickable,
   clip,
   fillMaxWidth,
+  matchParentSize,
   padding,
   Shapes,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { router, usePathname, type Href } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   useWindowDimensions,
   View,
@@ -43,10 +46,16 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { QUICK_ACTION_ICONS } from "@/components/QuickActions";
 import { pageKeyFromSegment, pagerPath, pagerRoute } from "@/utils/pager";
-import { QUICK_ACTIONS, useNavItems, useSettings } from "@/utils/settings";
+import {
+  QUICK_ACTIONS,
+  useNavItems,
+  useSettings,
+  type NavLabels,
+  type QuickActionKey,
+} from "@/utils/settings";
 import { useTabActions, useTabBarHidden } from "@/utils/tab-action";
 
-type NavItem = {
+export type NavItem = {
   key: string;
   title: string;
   icon: ImageSourcePropType;
@@ -108,16 +117,7 @@ export function AppTabBar() {
     pathname.split("/").filter(Boolean).pop() ?? "",
   );
   const { keys: navKeys } = useNavItems();
-  const items: NavItem[] = [
-    BERANDA,
-    ...navKeys.map((k) => ({
-      key: k,
-      title: QUICK_ACTIONS[k].label,
-      icon: QUICK_ACTION_ICONS[k],
-      href: `/(tabs)/${pagerRoute(k)}`,
-      paths: [pagerPath(k), QUICK_ACTIONS[k].href],
-    })),
-  ];
+  const items = navItemsFor(navKeys);
   const activeItem = items.find((item) => item.paths.includes(pathname));
   // In the swiper: Beranda or a navbar item's swiper page.
   const onTabPage = pathname === "/dashboard" || pathname.startsWith("/t-");
@@ -127,15 +127,19 @@ export function AppTabBar() {
   const [guestCount, setGuestCount] = useState(0);
   const [voteCount, setVoteCount] = useState(0);
   const [piketToday, setPiketToday] = useState(false);
+  const [shoppingCount, setShoppingCount] = useState(0);
 
   const loadCounts = useCallback(async () => {
     if (!user) return;
-    const [guestRes, ruleReqRes, myVotesRes, piketRes] = await Promise.all([
-      guestsApi.getAll(),
-      ruleRequestsApi.getAll(),
-      ruleRequestVotesApi.getAllMine(user.id),
-      piketsApi.getByUser(user.id),
-    ]);
+    const [guestRes, ruleReqRes, myVotesRes, piketRes, shoppingRes] =
+      await Promise.all([
+        guestsApi.getAll(),
+        ruleRequestsApi.getAll(),
+        ruleRequestVotesApi.getAllMine(user.id),
+        piketsApi.getByUser(user.id),
+        shoppingApi.getAll(),
+      ]);
+    setShoppingCount(shoppingBadgeCount(shoppingRes.data ?? [], user.id));
 
     setGuestCount((guestRes.data ?? []).filter((g) => !g.check_out).length);
 
@@ -168,6 +172,7 @@ export function AppTabBar() {
     guests: guestCount || undefined,
     rules: voteCount || undefined,
     piket: piketToday,
+    shopping: shoppingCount || undefined,
   };
 
   const actions = useTabActions();
@@ -181,34 +186,13 @@ export function AppTabBar() {
   const action = actions[current];
   // Narrow phones (~360dp) get tighter item padding so the pill and FAB fit.
   const compact = useWindowDimensions().width < 380;
-  const itemPad = compact ? 10 : 14;
 
   const { settings } = useSettings();
   if (!user || pathname === "/" || pathname.startsWith("/auth")) return null;
-  // Setting: navbar only on the swipeable tab pages.
-  // Classic is a fixed Material bar: always labelled, always visible, and only
-  // on the navbar pages. The label / hide / all-pages settings only apply to
-  // the floating style.
+  // Pengaturan shows its own preview of the bar instead.
+  if (pathname === "/settings") return null;
   const classic = settings.navStyle === "classic";
-  if (!onTabPage && (classic || !settings.navOnAllPages)) return null;
 
-  const open = (item: NavItem) => {
-    if (item === activeItem) return;
-    // In the swiper, switch pages; from a normal page, pop back to the swiper.
-    if (onTabPage) router.navigate(item.href as Href);
-    else router.dismissTo(item.href as Href);
-  };
-  const showLabel = (focused: boolean) =>
-    classic || (settings.navLabels === "active" && focused);
-  const visible = classic || !(hidden && settings.hideNavOnScroll);
-  const slide = {
-    enterTransition: EnterTransition.slideInVertically({
-      initialOffsetY: 1,
-    }).plus(EnterTransition.fadeIn()),
-    exitTransition: ExitTransition.slideOutVertically({
-      targetOffsetY: 1,
-    }).plus(ExitTransition.fadeOut()),
-  };
   const fab = (
     <AnimatedVisibility
       visible={!!action}
@@ -232,6 +216,48 @@ export function AppTabBar() {
     </AnimatedVisibility>
   );
 
+  // Classic lives only on the swiper pages, and the floating bar can be set
+  // to; elsewhere the page's FAB still shows on its own.
+  if (!onTabPage && (classic || !settings.navOnAllPages)) {
+    return (
+      <View
+        pointerEvents="box-none"
+        style={{ position: "absolute", right: 16, bottom: insets.bottom + 16 }}
+      >
+        <AppHost matchContents>{fab}</AppHost>
+      </View>
+    );
+  }
+
+  const open = (item: NavItem) => {
+    if (item === activeItem) return;
+    // In the swiper, switch pages; from a normal page, pop back to the swiper.
+    if (onTabPage) router.navigate(item.href as Href);
+    else router.dismissTo(item.href as Href);
+  };
+  const visible = classic || !(hidden && settings.hideNavOnScroll);
+  const slide = {
+    enterTransition: EnterTransition.slideInVertically({
+      initialOffsetY: 1,
+    }).plus(EnterTransition.fadeIn()),
+    exitTransition: ExitTransition.slideOutVertically({
+      targetOffsetY: 1,
+    }).plus(ExitTransition.fadeOut()),
+  };
+  const bar = (
+    <NavBarView
+      items={items}
+      activeKey={activeItem?.key}
+      classic={classic}
+      labels={settings.navLabels}
+      badges={BADGES}
+      compact={compact}
+      bottomInset={insets.bottom}
+      fab={fab}
+      onPress={open}
+    />
+  );
+
   if (classic) {
     // Classic: Material's full-width bar at the very bottom, FAB above it.
     return (
@@ -241,45 +267,7 @@ export function AppTabBar() {
       >
         <AppHost matchContents={{ vertical: true }} style={{ width: "100%" }}>
           <AnimatedVisibility visible={visible} {...slide}>
-            <Column horizontalAlignment="end" modifiers={[fillMaxWidth()]}>
-              <Box modifiers={[padding(0, 0, 16, 16)]}>{fab}</Box>
-              <NavigationBar
-                containerColor={colors.surfaceContainer}
-                modifiers={[padding(0, 0, 0, insets.bottom)]}
-              >
-                {items.map((item) => {
-                  const focused = item === activeItem;
-                  return (
-                    <NavigationBarItem
-                      key={item.key}
-                      selected={focused}
-                      alwaysShowLabel
-                      onClick={() => open(item)}
-                    >
-                      <NavigationBarItem.Icon>
-                        <TabIcon
-                          source={item.icon}
-                          badge={BADGES[item.key]}
-                          tint={
-                            focused
-                              ? colors.onSecondaryContainer
-                              : colors.onSurfaceVariant
-                          }
-                        />
-                      </NavigationBarItem.Icon>
-                      <NavigationBarItem.Label>
-                        <Text
-                          style={{ typography: "labelMedium" }}
-                          maxLines={1}
-                        >
-                          {item.title}
-                        </Text>
-                      </NavigationBarItem.Label>
-                    </NavigationBarItem>
-                  );
-                })}
-              </NavigationBar>
-            </Column>
+            {bar}
           </AnimatedVisibility>
         </AppHost>
       </View>
@@ -303,70 +291,165 @@ export function AppTabBar() {
       <AppHost matchContents={{ vertical: true }} style={{ width: "100%" }}>
         <Box contentAlignment="center" modifiers={[fillMaxWidth()]}>
           <AnimatedVisibility visible={visible} {...slide}>
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement={{ spacedBy: 8 }}
-              modifiers={[padding(0, 8, 0, 8), animateContentSize()]}
-            >
-              <HorizontalFloatingToolbar
-                colors={{ toolbarContainerColor: colors.surfaceContainerHigh }}
-              >
-                {items.map((item) => {
-                  const isFocused = item === activeItem;
-                  const tint = isFocused
-                    ? colors.onSecondaryContainer
-                    : colors.onSurfaceVariant;
-
-                  return (
-                    <Row
-                      key={item.key}
-                      verticalAlignment="center"
-                      horizontalArrangement={{ spacedBy: 6 }}
-                      modifiers={[
-                        clip(Shapes.RoundedCorner(20)),
-                        background(
-                          isFocused ? colors.secondaryContainer : "transparent",
-                        ),
-                        clickable(() => open(item)),
-                        padding(itemPad, 10, itemPad, 10),
-                        animateContentSize(),
-                      ]}
-                    >
-                      <TabIcon
-                        source={item.icon}
-                        badge={BADGES[item.key]}
-                        tint={tint}
-                      />
-                      <AnimatedVisibility
-                        visible={showLabel(isFocused)}
-                        enterTransition={EnterTransition.fadeIn().plus(
-                          EnterTransition.expandHorizontally(),
-                        )}
-                        exitTransition={ExitTransition.fadeOut().plus(
-                          ExitTransition.shrinkHorizontally(),
-                        )}
-                      >
-                        <Text
-                          style={{
-                            typography: "labelLarge",
-                            fontWeight: "bold",
-                          }}
-                          color={tint}
-                          maxLines={1}
-                        >
-                          {item.title}
-                        </Text>
-                      </AnimatedVisibility>
-                    </Row>
-                  );
-                })}
-              </HorizontalFloatingToolbar>
-
-              {fab}
-            </Row>
+            {bar}
           </AnimatedVisibility>
         </Box>
       </AppHost>
     </View>
   );
 }
+
+/** Beranda plus the given pages as navbar items (shared by the bar and its Pengaturan preview). */
+export const navItemsFor = (keys: QuickActionKey[]): NavItem[] => [
+  BERANDA,
+  ...keys.map((k) => ({
+    key: k,
+    title: QUICK_ACTIONS[k].label,
+    icon: QUICK_ACTION_ICONS[k],
+    href: `/(tabs)/${pagerRoute(k)}`,
+    paths: [pagerPath(k), QUICK_ACTIONS[k].href],
+  })),
+];
+
+/**
+ * The navbar itself, without positioning: the classic Material bar (FAB
+ * above it) or the floating pill (FAB beside it). Used by the real bar and,
+ * without a FAB or taps, as the live preview in Pengaturan.
+ */
+export const NavBarView = ({
+  items,
+  activeKey,
+  classic,
+  labels,
+  badges = {},
+  compact = false,
+  bottomInset = 0,
+  fab,
+  onPress,
+}: {
+  items: NavItem[];
+  activeKey?: string;
+  classic: boolean;
+  labels: NavLabels;
+  badges?: Record<string, number | boolean | undefined>;
+  compact?: boolean;
+  bottomInset?: number;
+  fab?: ReactNode;
+  onPress?: (item: NavItem) => void;
+}) => {
+  const colors = useAppColors();
+  const itemPad = compact ? 10 : 14;
+  const showLabel = (focused: boolean) =>
+    classic || (labels === "active" && focused);
+
+  if (classic) {
+    return (
+      <Column horizontalAlignment="end" modifiers={[fillMaxWidth()]}>
+        {fab ? <Box modifiers={[padding(0, 0, 16, 16)]}>{fab}</Box> : null}
+        <NavigationBar
+          containerColor={colors.surfaceContainer}
+          modifiers={[padding(0, 0, 0, bottomInset)]}
+        >
+          {items.map((item) => {
+            const focused = item.key === activeKey;
+            return (
+              <NavigationBarItem
+                key={item.key}
+                selected={focused}
+                alwaysShowLabel
+                onClick={() => onPress?.(item)}
+              >
+                <NavigationBarItem.Icon>
+                  <TabIcon
+                    source={item.icon}
+                    badge={badges[item.key]}
+                    tint={
+                      focused
+                        ? colors.onSecondaryContainer
+                        : colors.onSurfaceVariant
+                    }
+                  />
+                </NavigationBarItem.Icon>
+                <NavigationBarItem.Label>
+                  <Text style={{ typography: "labelMedium" }} maxLines={1}>
+                    {item.title}
+                  </Text>
+                </NavigationBarItem.Label>
+              </NavigationBarItem>
+            );
+          })}
+        </NavigationBar>
+      </Column>
+    );
+  }
+
+  return (
+    <Row
+      verticalAlignment="center"
+      horizontalArrangement={{ spacedBy: 8 }}
+      modifiers={[padding(0, 8, 0, 8), animateContentSize()]}
+    >
+      <HorizontalFloatingToolbar
+        colors={{ toolbarContainerColor: colors.surfaceContainerHigh }}
+      >
+        {items.map((item) => {
+          const isFocused = item.key === activeKey;
+          const tint = isFocused
+            ? colors.onSecondaryContainer
+            : colors.onSurfaceVariant;
+
+          return (
+            // The pill and its ripple are clipped on a layer behind the
+            // content, so the badge (which sits past the icon's corner)
+            // isn't cut off by the rounded clip.
+            // No animateContentSize here: the label already animates its own
+            // width, and a second size animation clips the content while it
+            // catches up (the right edge looked cut off on page change).
+            <Box key={item.key}>
+              <Box
+                modifiers={[
+                  matchParentSize(),
+                  clip(Shapes.RoundedCorner(20)),
+                  background(
+                    isFocused ? colors.secondaryContainer : "transparent",
+                  ),
+                  ...(onPress ? [clickable(() => onPress(item))] : []),
+                ]}
+              />
+              <Row
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 6 }}
+                modifiers={[padding(itemPad, 10, itemPad, 10)]}
+              >
+                <TabIcon
+                  source={item.icon}
+                  badge={badges[item.key]}
+                  tint={tint}
+                />
+                <AnimatedVisibility
+                  visible={showLabel(isFocused)}
+                  enterTransition={EnterTransition.fadeIn().plus(
+                    EnterTransition.expandHorizontally(),
+                  )}
+                  exitTransition={ExitTransition.fadeOut().plus(
+                    ExitTransition.shrinkHorizontally(),
+                  )}
+                >
+                  <Text
+                    style={{ typography: "labelLarge", fontWeight: "bold" }}
+                    color={tint}
+                    maxLines={1}
+                  >
+                    {item.title}
+                  </Text>
+                </AnimatedVisibility>
+              </Row>
+            </Box>
+          );
+        })}
+      </HorizontalFloatingToolbar>
+
+      {fab}
+    </Row>
+  );
+};

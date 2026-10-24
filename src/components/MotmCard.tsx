@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
@@ -74,6 +75,7 @@ export const MotmCard = ({
       setAward((a) => a && { ...a, prize: won.prize, prize_amount: won.amount });
       onWon(won, tier);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setRedeeming(false);

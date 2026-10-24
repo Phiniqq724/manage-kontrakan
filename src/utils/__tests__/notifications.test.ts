@@ -32,6 +32,7 @@ jest.mock("@/utils/supabase", () => ({
 import {
   dismissPiketReminders,
   handlePiketPlanNotificationResponse,
+  piketPartnerActionFor,
   piketPlanAnswerFor,
   registerForPushNotifications,
 } from "@/utils/notifications";
@@ -135,5 +136,14 @@ describe("dismissPiketReminders", () => {
     ]);
     await dismissPiketReminders();
     expect(mockDismiss.mock.calls.map((c) => c[0])).toEqual(["a", "b"]);
+  });
+});
+
+describe("piketPartnerActionFor", () => {
+  it("maps the partner nudge buttons and ignores other taps", () => {
+    expect(piketPartnerActionFor("piket_snooze")).toBe("snooze");
+    expect(piketPartnerActionFor("piket_partner_malas")).toBe("malas");
+    expect(piketPartnerActionFor("piket_malas")).toBeNull();
+    expect(piketPartnerActionFor("expo.modules.notifications.actions.DEFAULT")).toBeNull();
   });
 });

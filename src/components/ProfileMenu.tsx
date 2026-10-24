@@ -1,14 +1,19 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { Avatar } from "@/components/Avatar";
+import { InfoDialog } from "@/components/InfoDialog";
 import { ReportIssueSheet } from "@/components/ReportIssueSheet";
 import { useAccountActions } from "@/utils/account-actions";
 import { useAuth } from "@/utils/auth-context";
 import { getLinkedSession } from "@/utils/multi-session";
+import { useAppUpdate, type UpdateResult } from "@/utils/use-app-update";
+import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import Flag from "@expo/material-symbols/flag.xml";
 import Logout from "@expo/material-symbols/logout.xml";
 import Person from "@expo/material-symbols/person.xml";
 import Settings from "@expo/material-symbols/settings.xml";
 import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
+import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import {
   Box,
   DropdownMenu,
@@ -17,10 +22,13 @@ import {
   Text,
 } from "@expo/ui/jetpack-compose";
 import {
+  align,
+  background,
   clickable,
   clip,
   matchParentSize,
   Shapes,
+  size,
 } from "@expo/ui/jetpack-compose/modifiers";
 import { router, type Href } from "expo-router";
 import { useRef, useState } from "react";
@@ -28,8 +36,9 @@ import type { ImageSourcePropType } from "react-native";
 
 /**
  * The avatar in Beranda's header. Tapping it opens a menu: Profil, Pengaturan,
- * Laporan, Ganti akun (only when a linked account is stored on this phone)
- * and Keluar.
+ * the app version (updates from here; a red dot on the avatar and the item
+ * when one is ready), Laporan, Ganti akun (only when a linked account is
+ * stored on this phone) and Keluar.
  */
 export const ProfileMenu = () => {
   const colors = useAppColors();
@@ -38,6 +47,8 @@ export const ProfileMenu = () => {
   const [open, setOpen] = useState(false);
   const [canSwitch, setCanSwitch] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const update = useAppUpdate();
+  const [updateResult, setUpdateResult] = useState<UpdateResult | null>(null);
   // One choice per opening: the menu stays tappable while it fades out, so a
   // quick double tap would otherwise push Profil or Pengaturan twice.
   const chosen = useRef(false);
@@ -60,6 +71,7 @@ export const ProfileMenu = () => {
     try {
       await action();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   };
@@ -67,6 +79,15 @@ export const ProfileMenu = () => {
   const items: [string, ImageSourcePropType, () => void | Promise<void>][] = [
     ["Profil", Person, () => router.push("/profile")],
     ["Pengaturan", Settings, () => router.push("/settings" as Href)],
+    [
+      update.available
+        ? update.newVersion
+          ? `Perbarui ke ${update.newVersion}`
+          : "Pembaruan siap"
+        : `Versi ${update.version}`,
+      SystemUpdate,
+      async () => setUpdateResult(await update.run()),
+    ],
     ["Laporan", Flag, () => setReportOpen(true)],
     ...(canSwitch
       ? [["Ganti akun", SwapHoriz, switchAccount] as [string, ImageSourcePropType, () => Promise<void>]]
@@ -87,6 +108,7 @@ export const ProfileMenu = () => {
               colors={{ bg: colors.primaryContainer, fg: colors.onPrimaryContainer }}
             />
             <Box modifiers={[matchParentSize(), clip(Shapes.Circle), clickable(openMenu)]} />
+            {update.available ? <Dot ring={colors.background} /> : null}
           </Box>
         </DropdownMenu.Trigger>
         <DropdownMenu.Items>
@@ -104,10 +126,24 @@ export const ProfileMenu = () => {
                   {label}
                 </Text>
               </DropdownMenuItem.Text>
+              {icon === SystemUpdate && update.available ? (
+                <DropdownMenuItem.TrailingIcon>
+                  <Dot />
+                </DropdownMenuItem.TrailingIcon>
+              ) : null}
             </DropdownMenuItem>
           ))}
         </DropdownMenu.Items>
       </DropdownMenu>
+
+      {updateResult && (
+        <InfoDialog
+          title={updateResult.title}
+          text={updateResult.text}
+          icon={updateResult.ok ? CheckCircle : undefined}
+          onClose={() => setUpdateResult(null)}
+        />
+      )}
 
       {reportOpen && (
         <ReportIssueSheet
@@ -117,5 +153,20 @@ export const ProfileMenu = () => {
         />
       )}
     </>
+  );
+};
+
+/** Red "update ready" dot; `ring` circles it so it stands out on the avatar's corner. */
+const Dot = ({ ring }: { ring?: string }) => {
+  const colors = useAppColors();
+  const dot = <Box modifiers={[size(10, 10), clip(Shapes.Circle), background(colors.error)]} />;
+  if (!ring) return dot;
+  return (
+    <Box
+      contentAlignment="center"
+      modifiers={[align("topEnd"), size(14, 14), clip(Shapes.Circle), background(ring)]}
+    >
+      {dot}
+    </Box>
   );
 };

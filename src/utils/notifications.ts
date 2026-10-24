@@ -73,6 +73,60 @@ export async function handlePiketPlanNotificationResponse(
   if (error) console.error("[piket-plan-notification] failed:", error);
 }
 
+const PIKET_PARTNER_CATEGORY = "piket_partner";
+const PIKET_PARTNER_ACTIONS = {
+  piket_snooze: "snooze",
+  piket_partner_malas: "malas",
+} as const;
+
+/**
+ * Registers the 10 menit lagi / Malas buttons on "X udah piket loh". They
+ * don't open the app: the background notification task answers the server
+ * (see notification-task.ts).
+ */
+export async function registerPiketPartnerCategory(): Promise<void> {
+  await Notifications.setNotificationCategoryAsync(PIKET_PARTNER_CATEGORY, [
+    {
+      identifier: "piket_snooze",
+      buttonTitle: "10 menit lagi",
+      options: { opensAppToForeground: false },
+    },
+    {
+      identifier: "piket_partner_malas",
+      buttonTitle: "Malas",
+      options: { opensAppToForeground: false },
+    },
+  ]);
+}
+
+/** Maps a partner-nudge button to its server action, or null for other taps. */
+export const piketPartnerActionFor = (
+  actionIdentifier: string,
+): "snooze" | "malas" | null =>
+  PIKET_PARTNER_ACTIONS[actionIdentifier as keyof typeof PIKET_PARTNER_ACTIONS] ?? null;
+
+/**
+ * Sends a 10 menit lagi / Malas tap to the server and clears the notification.
+ * Safe to run twice for one tap (foreground listener and background task):
+ * a repeat snooze just moves the same reminder, a repeat Malas changes nothing.
+ */
+export async function handlePiketPartnerResponse(
+  actionIdentifier: string,
+  day: unknown,
+  notificationId?: string,
+): Promise<void> {
+  const action = piketPartnerActionFor(actionIdentifier);
+  if (!action || typeof day !== "string") return;
+  const { error } = await supabase.rpc("respond_piket_partner", {
+    p_day: day,
+    p_action: action,
+  });
+  if (error) console.error("[piket-partner-notification] failed:", error);
+  if (notificationId) {
+    await Notifications.dismissNotificationAsync(notificationId).catch(() => {});
+  }
+}
+
 /** Clears piket reminders still sitting in the tray, e.g. after submitting proof. */
 export async function dismissPiketReminders(): Promise<void> {
   try {
@@ -191,6 +245,7 @@ export const NOTIFICATION_TYPES = {
   request: "Permintaan",
   piket: "Piket",
   payment: "Pembayaran",
+  shopping: "Belanja",
 } as const;
 export type NotificationType = keyof typeof NOTIFICATION_TYPES;
 

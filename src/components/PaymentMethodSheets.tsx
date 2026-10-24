@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
@@ -113,6 +114,7 @@ export function PaymentMethodsListSheet({
     setMenuForId(null);
     const { error } = await paymentMethodsApi.delete(id);
     if (error) {
+      haptics.error();
       alert(error.message);
       return;
     }
@@ -377,6 +379,7 @@ export function PaymentMethodFormSheet({
       const url = await pickAndUploadImage("qris-codes", userId);
       if (url) setQrisUrl(url);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setUploading(false);
@@ -398,8 +401,10 @@ export function PaymentMethodFormSheet({
         ? await paymentMethodsApi.update(method!.id, payload)
         : await paymentMethodsApi.create({ user_id: userId, ...payload });
       if (error) throw error;
+      haptics.success();
       onSaved();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);
@@ -421,7 +426,10 @@ export function PaymentMethodFormSheet({
         <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
           <SegmentedButton
             selected={type === "bank"}
-            onClick={() => setType("bank")}
+            onClick={() => {
+              if (type !== "bank") haptics.tick();
+              setType("bank");
+            }}
           >
             <SegmentedButton.Label>
               <Text>Bank</Text>
@@ -429,7 +437,10 @@ export function PaymentMethodFormSheet({
           </SegmentedButton>
           <SegmentedButton
             selected={type === "emoney"}
-            onClick={() => setType("emoney")}
+            onClick={() => {
+              if (type !== "emoney") haptics.tick();
+              setType("emoney");
+            }}
           >
             <SegmentedButton.Label>
               <Text>E-money</Text>
@@ -437,7 +448,10 @@ export function PaymentMethodFormSheet({
           </SegmentedButton>
           <SegmentedButton
             selected={type === "qris"}
-            onClick={() => setType("qris")}
+            onClick={() => {
+              if (type !== "qris") haptics.tick();
+              setType("qris");
+            }}
           >
             <SegmentedButton.Label>
               <Text>QRIS</Text>

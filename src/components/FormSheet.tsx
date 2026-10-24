@@ -1,8 +1,11 @@
 import { useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
 import {
+  AnimatedVisibility,
   Button,
   Column,
+  EnterTransition,
+  ExitTransition,
   ModalBottomSheet,
   OutlinedButton,
   Row,
@@ -17,21 +20,62 @@ import {
 } from "@expo/ui/jetpack-compose/modifiers";
 import type { ReactNode } from "react";
 
-/** Standard bottom sheet: 24dp side padding, 16dp gaps, bold headline title with optional subtitle. */
+/**
+ * Folds away vertically. Sheet parts wrap themselves in this so one element
+ * (e.g. the camera) can take over the whole sheet.
+ */
+export const Collapse = ({
+  visible,
+  children,
+}: {
+  visible: boolean;
+  children: ReactNode;
+}) => (
+  <AnimatedVisibility
+    visible={visible}
+    enterTransition={EnterTransition.expandVertically().plus(
+      EnterTransition.fadeIn(),
+    )}
+    exitTransition={ExitTransition.shrinkVertically().plus(
+      ExitTransition.fadeOut(),
+    )}
+  >
+    <Column verticalArrangement={{ spacedBy: 16 }} modifiers={[fillMaxWidth()]}>
+      {children}
+    </Column>
+  </AnimatedVisibility>
+);
+
+/**
+ * Standard bottom sheet: 24dp side padding, 16dp gaps, bold headline title with optional subtitle.
+ * `focused` folds the title away and stops swipe-to-dismiss, for when one child fills the sheet.
+ * `swipe = false` stops swipe-to-dismiss alone (e.g. while a child takes drags).
+ * `skipPartial` opens it fully, so content that grows later is never cut off at half height.
+ */
 export const FormSheet = ({
   title,
   subtitle,
   onClose,
+  focused = false,
+  skipPartial = false,
+  swipe = true,
   children,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
+  focused?: boolean;
+  skipPartial?: boolean;
+  swipe?: boolean;
   children: ReactNode;
 }) => {
   const colors = useAppColors();
   return (
-    <ModalBottomSheet onDismissRequest={onClose}>
+    <ModalBottomSheet
+      onDismissRequest={onClose}
+      sheetGesturesEnabled={swipe && !focused}
+      skipPartiallyExpanded={skipPartial}
+    >
       <Column
         verticalArrangement={{ spacedBy: 16 }}
         modifiers={[
@@ -41,22 +85,24 @@ export const FormSheet = ({
           padding(24, 8, 24, 32),
         ]}
       >
-        <Column verticalArrangement={{ spacedBy: 4 }}>
-          <Text
-            style={{ typography: "headlineSmall", fontWeight: "bold" }}
-            color={colors.onSurface}
-          >
-            {title}
-          </Text>
-          {subtitle ? (
+        <Collapse visible={!focused}>
+          <Column verticalArrangement={{ spacedBy: 4 }}>
             <Text
-              style={{ typography: "bodyMedium" }}
-              color={colors.onSurfaceVariant}
+              style={{ typography: "headlineSmall", fontWeight: "bold" }}
+              color={colors.onSurface}
             >
-              {subtitle}
+              {title}
             </Text>
-          ) : null}
-        </Column>
+            {subtitle ? (
+              <Text
+                style={{ typography: "bodyMedium" }}
+                color={colors.onSurfaceVariant}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </Column>
+        </Collapse>
         {children}
       </Column>
     </ModalBottomSheet>

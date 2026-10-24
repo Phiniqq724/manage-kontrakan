@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { FormField } from "@/components/FormField";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { linkAccount } from "@/utils/multi-session";
@@ -25,6 +26,7 @@ export function AddAccountSheet({
       await linkAccount(ownerId, email.trim(), password);
       onLinked();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setLinking(false);

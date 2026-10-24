@@ -54,10 +54,11 @@ export async function declineRuleRequest(req: RuleRequestRow): Promise<void> {
 }
 
 /**
- * Casts a member's vote. Once every eligible (non-admin) voter has voted, the
- * database resolves the request (trigger on rule_request_votes): a majority
- * approves or declines it, a tie stays pending. This only sends the matching
- * notification afterwards; on a tie it asks the admin to decide.
+ * Casts a member's vote. The database resolves the request as soon as a
+ * majority of eligible (non-admin) voters agree (trigger on
+ * rule_request_votes; 3 of 5): approved or declined without waiting for the
+ * rest. A tie after everyone voted stays pending. This only sends the
+ * matching notification afterwards; on a tie it asks the admin to decide.
  */
 export async function castVoteAndMaybeResolve(
   req: RuleRequestRow,

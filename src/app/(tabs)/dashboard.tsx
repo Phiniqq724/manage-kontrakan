@@ -1,8 +1,10 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
+import { BillCard } from "@/components/BillCard";
 import {
-  isPayable,
-  PAYMENT_STATUS_LABEL,
   PayFormSheet,
+  PaymentDetailSheet,
+  PaymentsListSheet,
 } from "@/components/PaymentsSheets";
 import {
   guestsApi,
@@ -89,14 +91,6 @@ const parseTs = (s: string) =>
     : new Date(s.endsWith("Z") ? s : `${s}Z`);
 const firstName = (fullname: string) => fullname.split(" ")[0] ?? fullname;
 
-function withAlpha(hex: string, alphaHex: string) {
-  return `${hex.slice(0, 7)}${alphaHex}` as typeof hex;
-}
-
-function formatRupiah(amount: number) {
-  return `Rp ${amount.toLocaleString("id-ID")}`;
-}
-
 function timeAgo(date: Date) {
   const minutes = Math.max(
     0,
@@ -125,8 +119,11 @@ export default function DashboardScreen() {
   const colors = useAppColors();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [payment, setPayment] = useState<PaymentRow | null>(null);
-  const [payFormOpen, setPayFormOpen] = useState(false);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailPayment, setDetailPayment] = useState<PaymentRow | null>(null);
+  const [payFormPayment, setPayFormPayment] = useState<PaymentRow | null>(null);
+  const currentPeriod = new Date().toISOString().slice(0, 7);
   const [attentionItems, setAttentionItems] = useState<AttentionItem[]>([]);
   const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
 
@@ -154,8 +151,9 @@ export default function DashboardScreen() {
     const nameFor = (id: string | null) =>
       id ? firstName(usersById.get(id) ?? "Seseorang") : "Seseorang";
 
-    const period = new Date().toISOString().slice(0, 7);
-    setPayment((payRes.data ?? []).find((p) => p.period === period) ?? null);
+    setPayments(
+      [...(payRes.data ?? [])].sort((a, b) => b.period.localeCompare(a.period)),
+    );
 
     const allPikets: PiketRow[] = piketRes.data ?? [];
     const today = new Date();
@@ -270,6 +268,7 @@ export default function DashboardScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -284,13 +283,7 @@ export default function DashboardScreen() {
     Alert.alert("Terkirim", "Notifikasi tes sudah dikirim.");
   };
 
-  const monthLabel = new Date()
-    .toLocaleDateString("id-ID", { month: "long", year: "numeric" })
-    .toUpperCase();
   const [wonPrize, setWonPrize] = useState<{ won: Prize; tier: PrizeTier } | null>(null);
-  const dueInDays = payment?.due_date
-    ? Math.round((parseTs(payment.due_date).getTime() - Date.now()) / 86400000)
-    : null;
 
   return (
     <>
@@ -357,104 +350,13 @@ export default function DashboardScreen() {
 
           {user && <MotmCard userId={user.id} onWon={(won, tier) => setWonPrize({ won, tier })} />}
 
-          {/* Tagihan card */}
-          <Card
-            colors={{ containerColor: colors.primary }}
-            modifiers={[fillMaxWidth(), clip(Shapes.RoundedCorner(24))]}
-          >
-            <Column
-              verticalArrangement={{ spacedBy: 8 }}
-              modifiers={[fillMaxWidth(), paddingAll(20)]}
-            >
-              <Row
-                horizontalArrangement="spaceBetween"
-                verticalAlignment="center"
-                modifiers={[fillMaxWidth()]}
-              >
-                <Text
-                  style={{
-                    typography: "labelLarge",
-                    fontWeight: "bold",
-                    letterSpacing: 0.5,
-                  }}
-                  color={colors.onPrimary}
-                >
-                  {`TAGIHAN · ${monthLabel}`}
-                </Text>
-                {dueInDays !== null && payment && isPayable(payment.status) && (
-                  <Row
-                    verticalAlignment="center"
-                    horizontalArrangement={{ spacedBy: 4 }}
-                    modifiers={[
-                      clip(Shapes.RoundedCorner(12)),
-                      background(withAlpha(colors.onPrimary, "33")),
-                      padding(10, 4, 10, 4),
-                    ]}
-                  >
-                    <Text
-                      style={{ typography: "labelSmall", fontWeight: "bold" }}
-                      color={colors.onPrimary}
-                    >
-                      {dueInDays <= 0
-                        ? "Jatuh tempo"
-                        : `${dueInDays} hari lagi`}
-                    </Text>
-                  </Row>
-                )}
-              </Row>
-
-              <Text
-                style={{ typography: "headlineLarge", fontWeight: "bold" }}
-                color={colors.onPrimary}
-              >
-                {!payment || payment.amount == null
-                  ? "Belum ada tagihan"
-                  : isPayable(payment.status)
-                    ? formatRupiah(payment.amount)
-                    : payment.status === "pending"
-                      ? "Menunggu konfirmasi"
-                      : "Lunas"}
-              </Text>
-
-              {payment && !isPayable(payment.status) && (
-                <Text
-                  style={{ typography: "bodyMedium" }}
-                  color={withAlpha(colors.onPrimary, "CC")}
-                >
-                  {payment.status === "pending"
-                    ? `${formatRupiah(payment.amount ?? 0)} · bukti sedang dicek admin`
-                    : `${formatRupiah(payment.amount ?? 0)} · ${PAYMENT_STATUS_LABEL[payment.status] ?? payment.status}`}
-                </Text>
-              )}
-
-              {payment?.due_date && isPayable(payment.status) && (
-                <Text
-                  style={{ typography: "bodyMedium" }}
-                  color={withAlpha(colors.onPrimary, "CC")}
-                >
-                  {`Jatuh tempo ${parseTs(payment.due_date).toLocaleDateString("id-ID", { day: "2-digit", month: "long" })}`}
-                </Text>
-              )}
-
-              {payment && isPayable(payment.status) && (
-                <Button
-                  onClick={() => setPayFormOpen(true)}
-                  colors={{
-                    containerColor: colors.onPrimary,
-                    contentColor: colors.primary,
-                  }}
-                  modifiers={[fillMaxWidth()]}
-                >
-                  <Text
-                    style={{ typography: "labelLarge", fontWeight: "bold" }}
-                    color={colors.primary}
-                  >
-                    Bayar sekarang
-                  </Text>
-                </Button>
-              )}
-            </Column>
-          </Card>
+          {/* Tagihan: tap for the payment history */}
+          <BillCard
+            payments={payments}
+            currentPeriod={currentPeriod}
+            onOpenHistory={() => setHistoryOpen(true)}
+            onPay={setPayFormPayment}
+          />
 
           {/* Quick actions (chosen per account in Pengaturan) */}
           <QuickActionRows
@@ -577,15 +479,41 @@ export default function DashboardScreen() {
         </Column>
       </PullToRefreshBox>
 
-      {payFormOpen && payment && user && (
+      {historyOpen && (
+        <PaymentsListSheet
+          payments={payments}
+          onClose={() => setHistoryOpen(false)}
+          onSelect={(p) => {
+            setHistoryOpen(false);
+            setDetailPayment(p);
+          }}
+          onPay={(p) => {
+            setHistoryOpen(false);
+            setPayFormPayment(p);
+          }}
+        />
+      )}
+
+      {detailPayment && (
+        <PaymentDetailSheet
+          payment={detailPayment}
+          onClose={() => setDetailPayment(null)}
+          onPay={(p) => {
+            setDetailPayment(null);
+            setPayFormPayment(p);
+          }}
+        />
+      )}
+
+      {payFormPayment && user && (
         <PayFormSheet
-          payment={payment}
+          payment={payFormPayment}
           userId={user.id}
           userFullname={user.fullname}
-          onClose={() => setPayFormOpen(false)}
+          onClose={() => setPayFormPayment(null)}
           onSubmitted={() => {
             loadData();
-            setPayFormOpen(false);
+            setPayFormPayment(null);
           }}
         />
       )}

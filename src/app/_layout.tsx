@@ -13,7 +13,9 @@ import { SystemNavBackdrop } from "../components/SystemNavBackdrop";
 import { UpdateBanner } from "../components/UpdateBanner";
 import { AuthProvider, useAuth } from "../utils/auth-context";
 import {
+  handlePiketPartnerResponse,
   handlePiketPlanNotificationResponse,
+  registerPiketPartnerCategory,
   registerPiketPlanCategory,
   registerRuleVoteCategory,
 } from "../utils/notifications";
@@ -79,15 +81,26 @@ function RootContent() {
   useEffect(() => {
     registerRuleVoteCategory();
     registerPiketPlanCategory();
+    registerPiketPartnerCategory();
 
-    const handleResponse = (response: Notifications.NotificationResponse) => {
+    const handleResponse = (
+      response: Notifications.NotificationResponse,
+      coldStart = false,
+    ) => {
       handleRuleVoteNotificationResponse(response);
       handlePiketPlanNotificationResponse(response);
+      // Background/closed taps go through the notification task instead. Not
+      // on cold start: the stored last tap would snooze again hours later.
+      if (!coldStart) handlePiketPartnerResponse(
+        response.actionIdentifier,
+        response.notification.request.content.data?.day,
+        response.notification.request.identifier,
+      );
     };
 
     // Cold start: app was killed and opened by tapping a notification action.
     Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) handleResponse(response);
+      if (response) handleResponse(response, true);
     });
 
     // Foreground/backgrounded taps.
@@ -132,6 +145,7 @@ function RootContent() {
           <Stack.Screen name="settings" />
           <Stack.Screen name="piket" />
           <Stack.Screen name="guests" />
+          <Stack.Screen name="shopping" />
           <Stack.Screen name="rules" />
           </Stack>
           {/* Solid strip behind the phone's gesture bar, under the app navbar. */}

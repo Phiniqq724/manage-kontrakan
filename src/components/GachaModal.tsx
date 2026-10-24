@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Easing, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -75,11 +76,22 @@ export const GachaModal = ({
   const colors = useAppColors();
   const [reel] = useState(() => buildReel(won, 30, Math.random, prizesFor(tier)));
   const [done, setDone] = useState(false);
+  // Fixed at open so a parent re-render can never restart the spin.
+  const [winTier] = useState<PrizeTier>(() => (isRare(won) ? "jackpot" : tier));
   const travel = useRef(new Animated.Value(rowAt(reel.length - 1))).current;
   const pop = useRef(new Animated.Value(1)).current;
   const reveal = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // A light tick each time a new row passes the window.
+    let row = Math.round(rowAt(reel.length - 1) / ROW);
+    const id = travel.addListener(({ value }) => {
+      const next = Math.round(value / ROW);
+      if (next !== row) {
+        row = next;
+        haptics.reelTick();
+      }
+    });
     const spin = Animated.sequence([
       ...nearMiss(travel),
       Animated.timing(pop, { toValue: 1.08, duration: 120, useNativeDriver: true }),
@@ -87,11 +99,15 @@ export const GachaModal = ({
     ]);
     spin.start(({ finished }) => {
       if (!finished) return;
+      haptics.win(winTier);
       setDone(true);
       Animated.timing(reveal, { toValue: 1, duration: 300, useNativeDriver: true }).start();
     });
-    return () => spin.stop();
-  }, [travel, pop, reveal]);
+    return () => {
+      spin.stop();
+      travel.removeListener(id);
+    };
+  }, [travel, pop, reveal, reel.length, winTier]);
 
   return (
     <Modal

@@ -1,8 +1,9 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { ButtonContent } from "@/components/ButtonContent";
 import { FormField } from "@/components/FormField";
-import { FormSheet, SheetActions } from "@/components/FormSheet";
+import { Collapse, FormSheet, SheetActions } from "@/components/FormSheet";
 import { CardLabel } from "@/components/SettingsCard";
 import { piketRequestsApi, piketsApi, usersApi } from "@/services/api";
 import { useAuth } from "@/utils/auth-context";
@@ -24,8 +25,12 @@ import {
   relativeDay,
 } from "@/utils/piket-utils";
 import type { Database } from "@/utils/supabase-types";
-import { captureAndUploadImage } from "@/utils/upload";
+import { CameraSlot } from "@/components/CameraSlot";
+import { cooldownRemaining, formatCooldown, POKE_COOLDOWN_MS } from "@/utils/cooldown";
+import { uploadResizedAsset, type LocalImage } from "@/utils/upload";
+import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import Check from "@expo/material-symbols/check.xml";
+import NotificationsActive from "@expo/material-symbols/notifications_active.xml";
 import CleaningServices from "@expo/material-symbols/cleaning_services.xml";
 import Close from "@expo/material-symbols/close.xml";
 import {
@@ -92,6 +97,23 @@ export default function PiketScreen() {
   const [allRequests, setAllRequests] = useState<PiketRequestRow[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [finishing, setFinishing] = useState(false);
+  const [pokingId, setPokingId] = useState<string | null>(null);
+  // When each partner was last reminded (like the vote reminders); the
+  // server enforces the same cooldown, so a reload can't get around it.
+  const [pokedAt, setPokedAt] = useState<Record<string, number>>({});
+  const [, tick] = useState(0);
+  const anyPokeCooldown = Object.values(pokedAt).some(
+    (at) => cooldownRemaining(at, POKE_COOLDOWN_MS) > 0,
+  );
+
+  // Re-render every second while a countdown is showing.
+  useEffect(() => {
+    if (!anyPokeCooldown) return;
+    const t = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [anyPokeCooldown]);
+  const [proofPhoto, setProofPhoto] = useState<LocalImage | null>(null);
+  const [cameraLive, setCameraLive] = useState(false);
   const [view, setView] = useState<"all" | "mine" | "history">("all");
   const [selectedDay, setSelectedDay] = useState(getTodayStr());
 
@@ -124,6 +146,7 @@ export default function PiketScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -145,6 +168,10 @@ export default function PiketScreen() {
     .filter((r) => r.requested_by === currentUser?.id)
     .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
   const todayPikets = pikets.filter((p) => p.day === todayStr);
+  // Done with your own scheduled piket today: you can remind your partner.
+  const myPiketDoneToday = todayPikets.some(
+    (p) => p.assign_to === currentUser?.id && !p.extra && p.status === "done",
+  );
   const allDays = buildDateStrip(todayStr, STRIP_DAYS);
   const stripDays =
     view === "history"
@@ -190,21 +217,25 @@ export default function PiketScreen() {
   const closeSubmit = () => {
     setSubmitFor(null);
     setDescription("");
+    setProofPhoto(null);
+    setCameraLive(false);
   };
 
   /**
-   * Takes the proof photo and submits: your own piket (or a rejected one
-   * again), or an extra one for today. Both count right away.
+   * Uploads the proof photo from the in-app camera and submits: your own
+   * piket (or a rejected one again), or an extra one for today. Both count
+   * right away.
    */
   async function handleSubmitPiket() {
-    if (!submitFor) return;
+    const photo = proofPhoto;
+    if (!submitFor || !photo) return;
     setFinishing(true);
     try {
-      const url = await captureAndUploadImage(
+      const url = await uploadResizedAsset(
+        photo,
         "piket-evidence",
         currentUser?.id ?? "anon",
       );
-      if (!url) return;
       const note = description.trim() || null;
       const { error } = submitFor.own
         ? await piketsApi.update(submitFor.own.id, {
@@ -214,13 +245,38 @@ export default function PiketScreen() {
           })
         : await piketsApi.submitExtra(url, note ?? undefined);
       if (error) throw error;
+      haptics.success();
       if (submitFor.own) dismissPiketReminders();
       closeSubmit();
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setFinishing(false);
+    }
+  }
+
+  /** "Ingetin": pings a partner who hasn't done today's piket yet. */
+  async function handlePokePartner(partnerId: string) {
+    if (cooldownRemaining(pokedAt[partnerId] ?? null, POKE_COOLDOWN_MS) > 0) return;
+    setPokingId(partnerId);
+    try {
+      const { data, error } = await piketsApi.pokePartner(partnerId);
+      if (error) throw error;
+      // data = seconds left when it was already sent recently (e.g. before a
+      // reload): show that countdown instead of sending again.
+      const left = data && data > 0 ? data * 1000 : POKE_COOLDOWN_MS;
+      if (!data) haptics.success();
+      setPokedAt((prev) => ({
+        ...prev,
+        [partnerId]: Date.now() - (POKE_COOLDOWN_MS - left),
+      }));
+    } catch (err: any) {
+      haptics.error();
+      alert(err.message);
+    } finally {
+      setPokingId(null);
     }
   }
 
@@ -229,8 +285,10 @@ export default function PiketScreen() {
       const { data, error } = await piketRequestsApi.respond(req.id, accept);
       if (error) throw error;
       if (data === "expired") alert("Permintaan ini sudah kedaluwarsa.");
+      else if (accept) haptics.success();
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   }
@@ -260,6 +318,7 @@ export default function PiketScreen() {
         status: "pending",
       });
       if (error) throw error;
+      haptics.success();
 
       const replacement = users[replacementId];
       if (replacement) {
@@ -273,6 +332,7 @@ export default function PiketScreen() {
 
       closeIzin();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);
@@ -322,7 +382,10 @@ export default function PiketScreen() {
                 <FilterChip
                   key={value}
                   selected={view === value}
-                  onClick={() => setView(value)}
+                  onClick={() => {
+                    if (view !== value) haptics.tick();
+                    setView(value);
+                  }}
                 >
                   <FilterChip.Label>
                     <Text>{label}</Text>
@@ -636,6 +699,17 @@ export default function PiketScreen() {
                 !["done", "review"].includes(p.status) &&
                 (p.day >= todayStr || rejected);
               const note = p.extra ? "Piket tambahan" : null;
+              const canPoke =
+                myPiketDoneToday &&
+                !isMe &&
+                !p.extra &&
+                p.day === todayStr &&
+                !!p.assign_to &&
+                ["pending", "izin", "rejected"].includes(p.status);
+              const pokeCooldown = cooldownRemaining(
+                pokedAt[p.assign_to ?? ""] ?? null,
+                POKE_COOLDOWN_MS,
+              );
               return (
                 <Card
                   key={p.id}
@@ -779,6 +853,27 @@ export default function PiketScreen() {
                         )}
                       </Row>
                     )}
+                    {canPoke && (
+                      <FilledTonalButton
+                        enabled={pokeCooldown === 0 && pokingId !== p.assign_to}
+                        onClick={() => handlePokePartner(p.assign_to!)}
+                        modifiers={[fillMaxWidth()]}
+                      >
+                        <Icon
+                          source={NotificationsActive}
+                          tint={colors.onSecondaryContainer}
+                          size={18}
+                        />
+                        <Text
+                          style={{ typography: "labelLarge", fontWeight: "bold" }}
+                          color={colors.onSecondaryContainer}
+                        >
+                          {pokeCooldown > 0
+                            ? `  Ingetin lagi dalam ${formatCooldown(pokeCooldown)}`
+                            : `  Ingetin ${person?.fullname.split(" ")[0] ?? ""}`}
+                        </Text>
+                      </FilledTonalButton>
+                    )}
                   </Column>
                 </Card>
               );
@@ -835,22 +930,41 @@ export default function PiketScreen() {
               ? `${fmtDay(submitFor.own.day, { weekday: "long", day: "numeric", month: "long" })} · +${submitFor.own.extra ? POINTS.extra : POINTS.own} poin`
               : `Hari ini · +${POINTS.extra} poin`
           }
-          onClose={closeSubmit}
+          focused={cameraLive}
+          skipPartial
+          onClose={cameraLive ? () => setCameraLive(false) : closeSubmit}
         >
-
-          <FormField
-            label="Keterangan (opsional)"
-            onValueChange={setDescription}
-            minLines={2}
-            keyboardOptions={{ capitalization: "sentences" }}
+          <CameraSlot
+            label="Foto bukti"
+            icon={PhotoCamera}
+            photo={proofPhoto}
+            live={cameraLive}
+            slotHeight={240}
+            asButton
+            onOpen={() => setCameraLive(true)}
+            onClose={() => setCameraLive(false)}
+            onCapture={(photo) => {
+              setProofPhoto(photo);
+              setCameraLive(false);
+            }}
           />
 
-          <SheetActions
-            onCancel={closeSubmit}
-            onSubmit={handleSubmitPiket}
-            submitLabel="Foto & kirim"
-            loading={finishing}
-          />
+          <Collapse visible={!cameraLive}>
+            <FormField
+              label="Keterangan (opsional)"
+              onValueChange={setDescription}
+              minLines={5}
+              keyboardOptions={{ capitalization: "sentences" }}
+            />
+
+            <SheetActions
+              onCancel={closeSubmit}
+              onSubmit={handleSubmitPiket}
+              submitLabel="Kirim"
+              enabled={!!proofPhoto}
+              loading={finishing}
+            />
+          </Collapse>
         </FormSheet>
       )}
 

@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { useHideOnScroll } from "@/utils/tab-action";
@@ -74,6 +75,7 @@ export default function AdminPaymentsScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -93,6 +95,8 @@ export default function AdminPaymentsScreen() {
         status: finalStatus,
       });
       if (error) throw error;
+      if (action === "approve") haptics.success();
+      else haptics.error();
 
       const payer = selected.paid_by ? users[selected.paid_by] : null;
       if (payer) {
@@ -116,6 +120,7 @@ export default function AdminPaymentsScreen() {
       setSelected(null);
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setProcessing(false);
@@ -160,6 +165,7 @@ export default function AdminPaymentsScreen() {
       alert(`${created} tagihan berhasil dibuat untuk periode ${period}.`);
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   }

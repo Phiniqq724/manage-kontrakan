@@ -2,7 +2,7 @@
   "expo": {
     "name": "Semanggi",
     "slug": "manage-kontrakan",
-    "version": "2.2.2",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/semanggi-icon.png",
     "scheme": "managekontrakan",
@@ -53,6 +53,14 @@
       "expo-sqlite",
       "expo-system-ui",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Aplikasi memerlukan akses kamera untuk foto bukti piket.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": false
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Aplikasi memerlukan akses galeri untuk mengunggah bukti pembayaran dan laporan."
@@ -89,7 +97,7 @@
       }
     },
     "owner": "mustpikeks-2",
-    "runtimeVersion": "2.2.0",
+    "runtimeVersion": "2.3.0",
     "updates": {
       "url": "https://u.expo.dev/968c2fca-1d0f-4f42-a469-09502a4405b8"
     }

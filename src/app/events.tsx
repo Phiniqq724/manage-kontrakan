@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { ButtonContent } from "@/components/ButtonContent";
@@ -143,6 +144,7 @@ export default function EventsScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -157,8 +159,10 @@ export default function EventsScreen() {
         isAttending,
         myVotes[event.id] ?? null,
       );
+      haptics.success();
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setVotingId(null);
@@ -195,12 +199,14 @@ export default function EventsScreen() {
         { name, location, event_time: pickedDate.toISOString() },
         user,
       );
+      haptics.success();
       setCreateOpen(false);
       setName("");
       setLocation("");
       setPickedDate(null);
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);

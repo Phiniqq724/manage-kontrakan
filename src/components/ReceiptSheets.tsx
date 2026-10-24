@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
 import { FormField } from "@/components/FormField";
@@ -109,6 +110,7 @@ export function ReceiptFormSheet({
       const url = await pickAndUploadImage("receipts", category);
       if (url) setDocs(url);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setUploading(false);
@@ -126,8 +128,10 @@ export function ReceiptFormSheet({
         created_by: userId,
       });
       if (error) throw error;
+      haptics.success();
       onSaved();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);
@@ -151,7 +155,10 @@ export function ReceiptFormSheet({
             <SegmentedButton
               key={c.key}
               selected={category === c.key}
-              onClick={() => setCategory(c.key)}
+              onClick={() => {
+                if (category !== c.key) haptics.tick();
+                setCategory(c.key);
+              }}
             >
               <SegmentedButton.Label>
                 <Text>{c.shortLabel}</Text>
@@ -284,6 +291,7 @@ export function ReceiptDetailSheet({
       if (error) throw error;
       onDeleted();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
       setDeleting(false);
     }

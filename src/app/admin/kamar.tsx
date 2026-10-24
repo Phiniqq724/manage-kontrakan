@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { useHideOnScroll } from "@/utils/tab-action";
@@ -60,13 +61,20 @@ export default function AdminKamarScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
 
   const handleAssign = async (userId: string | null) => {
     if (!selectedRoom) return;
-    await kamarApi.assignUser(selectedRoom.id, userId);
+    const { error } = await kamarApi.assignUser(selectedRoom.id, userId);
+    if (error) {
+      haptics.error();
+      alert(error.message);
+      return;
+    }
+    haptics.success();
     setSelectedRoom(null);
     await loadData();
   };

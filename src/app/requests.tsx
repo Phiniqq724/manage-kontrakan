@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { FormField } from "@/components/FormField";
@@ -107,6 +108,7 @@ export default function RequestsScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -126,7 +128,9 @@ export default function RequestsScreen() {
     }));
     try {
       await castRequestVote(req.id, user.id, value, current);
+      haptics.success();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       await loadData();
@@ -142,7 +146,10 @@ export default function RequestsScreen() {
         style: "destructive",
         onPress: async () => {
           const { error } = await requestsApi.delete(req.id);
-          if (error) alert(error.message);
+          if (error) {
+            haptics.error();
+            alert(error.message);
+          }
           else loadData();
         },
       },
@@ -153,12 +160,14 @@ export default function RequestsScreen() {
     setSubmitting(true);
     try {
       await createRequestAndNotify({ title, description }, user);
+      haptics.success();
       setCreateOpen(false);
       setTitle("");
       setDescription("");
       setSort("new");
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);

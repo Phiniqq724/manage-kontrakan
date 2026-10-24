@@ -1,4 +1,6 @@
 export const REMINDER_COOLDOWN_MS = 2 * 60 * 1000;
+/** Piket "Ingetin": matches the server's limit in poke_piket_partner. */
+export const POKE_COOLDOWN_MS = 10 * 60 * 1000;
 
 /** Milliseconds left before another reminder can be sent; 0 once the cooldown has elapsed or never started. */
 export function cooldownRemaining(

@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { PRIORITY_LABEL, type Priority } from "@/utils/rule-utils";
 import { BackButton } from "@/components/BackButton";
@@ -113,6 +114,7 @@ export default function AdminRulesScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -121,8 +123,10 @@ export default function AdminRulesScreen() {
     setProcessing(req.id);
     try {
       await approveRuleRequest(req);
+      haptics.success();
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setProcessing(null);
@@ -133,8 +137,10 @@ export default function AdminRulesScreen() {
     setProcessing(req.id);
     try {
       await declineRuleRequest(req);
+      haptics.error();
       loadData();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setProcessing(null);

@@ -7,6 +7,8 @@ jest.mock("@/utils/auth-context", () => ({ useAuth: () => ({ user: null }) }));
 import {
   DEFAULT_SETTINGS,
   loadSettings,
+  keepHiddenNavItems,
+  navItemLimit,
   resolveNavItems,
   resolveQuickActions,
 } from "@/utils/settings";
@@ -23,6 +25,7 @@ describe("loadSettings", () => {
       navStyle: "classic",
       hideNavOnScroll: false,
       navOnAllPages: false,
+      haptics: false,
     };
     expect(loadSettings(JSON.stringify(saved))).toEqual(saved);
   });
@@ -136,7 +139,7 @@ describe("resolveNavItems", () => {
     expect(resolveNavItems(null, false)).toEqual(["piket", "guests", "rules"]);
   });
 
-  it("allows any page, hides admin tools from members, max 3 after Beranda", () => {
+  it("allows any page, hides admin tools from members, capped at the limit", () => {
     expect(resolveNavItems(["members", "adminKamar", "events"], false)).toEqual(
       ["members", "events"],
     );
@@ -144,8 +147,37 @@ describe("resolveNavItems", () => {
       resolveNavItems(
         ["members", "events", "requests", "receipts", "profile"],
         true,
+        3,
       ),
     ).toHaveLength(3);
+    expect(
+      resolveNavItems(["members", "events", "requests", "receipts", "profile"], true),
+    ).toHaveLength(4);
+  });
+});
+
+describe("navItemLimit", () => {
+  it("fits 3 with the floating active label, 4 otherwise", () => {
+    expect(navItemLimit({ navStyle: "floating", navLabels: "active" })).toBe(3);
+    expect(navItemLimit({ navStyle: "floating", navLabels: "none" })).toBe(4);
+    expect(navItemLimit({ navStyle: "classic", navLabels: "active" })).toBe(4);
+  });
+});
+
+describe("keepHiddenNavItems", () => {
+  it("keeps the item hidden past the limit so it can come back", () => {
+    expect(
+      keepHiddenNavItems(["rules", "piket", "guests"], ["piket", "guests", "rules", "events"], 3),
+    ).toEqual(["rules", "piket", "guests", "events"]);
+  });
+
+  it("drops a hidden item that was moved into view, and never exceeds 4", () => {
+    expect(
+      keepHiddenNavItems(["events", "piket", "guests"], ["piket", "guests", "rules", "events"], 3),
+    ).toEqual(["events", "piket", "guests"]);
+    expect(
+      keepHiddenNavItems(["a", "b", "c", "d"] as never, ["x"] as never, 4),
+    ).toHaveLength(4);
   });
 });
 

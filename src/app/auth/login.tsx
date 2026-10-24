@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { ButtonContent } from "@/components/ButtonContent";
 import { FormField } from "@/components/FormField";
@@ -215,7 +216,10 @@ export default function LoginScreen() {
                 verticalAlignment="center"
                 horizontalArrangement={{ spacedBy: 8 }}
                 modifiers={[
-                  toggleable(showPassword, () => setShowPassword((v) => !v), {
+                  toggleable(showPassword, () => {
+                    haptics.toggle(!showPassword);
+                    setShowPassword((v) => !v);
+                  }, {
                     role: "checkbox",
                   }),
                 ]}

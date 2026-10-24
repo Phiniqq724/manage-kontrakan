@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { AddMemberSheet } from "@/components/AddMemberSheet";
@@ -92,6 +93,7 @@ export default function MembersScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -112,6 +114,7 @@ export default function MembersScreen() {
       );
       if (url) setEvidenceUri(url);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   };
@@ -132,6 +135,7 @@ export default function MembersScreen() {
         docs: evidenceUri,
       });
       if (error) throw error;
+      haptics.success();
       setReportOpen(false);
       await sendPush({
         recipients: "admin",
@@ -139,6 +143,7 @@ export default function MembersScreen() {
         body: `${currentUser.fullname} melaporkan ${selectedMember.fullname}: ${title}.`,
       });
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSubmitting(false);

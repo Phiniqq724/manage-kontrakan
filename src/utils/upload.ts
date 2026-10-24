@@ -19,7 +19,10 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
  * re-encodes it as compressed JPEG, so uploads stay small and load quickly
  * on the phones viewing them later. Never upscales a smaller source image.
  */
-async function resizeAndCompress(asset: ImagePicker.ImagePickerAsset) {
+/** A local image file with its pixel size, from the picker or the in-app camera. */
+export type LocalImage = { uri: string; width: number; height: number };
+
+async function resizeAndCompress(asset: LocalImage) {
   const longestSide = Math.max(asset.width, asset.height);
   const context = ImageManipulator.ImageManipulator.manipulate(asset.uri);
   if (longestSide > MAX_DIMENSION) {
@@ -37,8 +40,9 @@ async function resizeAndCompress(asset: ImagePicker.ImagePickerAsset) {
   });
 }
 
-async function uploadResizedAsset(
-  asset: ImagePicker.ImagePickerAsset,
+/** Resize, compress and upload a local image to Supabase Storage. Returns the public URL. */
+export async function uploadResizedAsset(
+  asset: LocalImage,
   bucket: string,
   folder: string,
 ): Promise<string> {
@@ -83,11 +87,8 @@ export async function captureAndUploadImage(
   return uploadResizedAsset(result.assets[0], bucket, folder);
 }
 
-/** Pick an image from the gallery and upload it to Supabase Storage. Returns the public URL. */
-export async function pickAndUploadImage(
-  bucket: string,
-  folder: string,
-): Promise<string | null> {
+/** Pick an image from the gallery without uploading it. Null when cancelled or denied. */
+export async function pickLocalImage(): Promise<LocalImage | null> {
   const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (status !== "granted") {
     alert("Izin akses galeri diperlukan untuk mengunggah foto.");
@@ -99,7 +100,14 @@ export async function pickAndUploadImage(
     quality: 1,
   });
 
-  if (result.canceled || !result.assets[0]) return null;
+  return result.canceled ? null : (result.assets[0] ?? null);
+}
 
-  return uploadResizedAsset(result.assets[0], bucket, folder);
+/** Pick an image from the gallery and upload it to Supabase Storage. Returns the public URL. */
+export async function pickAndUploadImage(
+  bucket: string,
+  folder: string,
+): Promise<string | null> {
+  const asset = await pickLocalImage();
+  return asset ? uploadResizedAsset(asset, bucket, folder) : null;
 }

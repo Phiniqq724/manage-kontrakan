@@ -937,6 +937,80 @@ export type Database = {
           },
         ]
       }
+      shopping_items: {
+        Row: {
+          bought_by: string | null
+          created_at: string
+          created_by: string
+          id: string
+          item_photo: string | null
+          name: string
+          note: string | null
+          receipt_photo: string | null
+          reject_note: string | null
+          resolved_at: string | null
+          status: string
+          submitted_at: string | null
+        }
+        Insert: {
+          bought_by?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          item_photo?: string | null
+          name: string
+          note?: string | null
+          receipt_photo?: string | null
+          reject_note?: string | null
+          resolved_at?: string | null
+          status?: string
+          submitted_at?: string | null
+        }
+        Update: {
+          bought_by?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          item_photo?: string | null
+          name?: string
+          note?: string | null
+          receipt_photo?: string | null
+          reject_note?: string | null
+          resolved_at?: string | null
+          status?: string
+          submitted_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopping_items_bought_by_fkey"
+            columns: ["bought_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_items_bought_by_fkey"
+            columns: ["bought_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       split_bill_participants: {
         Row: {
           amount_due: number
@@ -1208,6 +1282,14 @@ export type Database = {
         }[]
       }
       redeem_motm: { Args: { p_award: string }; Returns: Json }
+      poke_piket_partner: {
+        Args: { p_partner: string }
+        Returns: number
+      }
+      respond_piket_partner: {
+        Args: { p_action: string; p_day: string }
+        Returns: undefined
+      }
       respond_piket_plan: {
         Args: { p_day: string; p_response: string }
         Returns: undefined
@@ -1216,8 +1298,16 @@ export type Database = {
         Args: { p_accept: boolean; p_request: string }
         Returns: string
       }
+      review_shopping_item: {
+        Args: { p_accept: boolean; p_id: string; p_note?: string }
+        Returns: undefined
+      }
       submit_extra_piket: {
         Args: { p_description?: string; p_docs: string }
+        Returns: string
+      }
+      submit_shopping_item: {
+        Args: { p_id: string; p_item_photo: string; p_receipt_photo: string }
         Returns: string
       }
     }

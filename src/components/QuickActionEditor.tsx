@@ -1,18 +1,19 @@
 import { useAppColors } from "@/components/AppHost";
 import { DraggableTiles } from "@/components/DraggableTiles";
-import { QuickActionRows, QuickActionTile } from "@/components/QuickActions";
-import { CardLabel, SettingsCard } from "@/components/SettingsCard";
+import { QuickActionTile } from "@/components/QuickActions";
+import { SettingsCard } from "@/components/SettingsCard";
 import type { QuickActionKey } from "@/utils/settings";
 import Home from "@expo/material-symbols/home.xml";
-import { Column, Text } from "@expo/ui/jetpack-compose";
+import { Text } from "@expo/ui/jetpack-compose";
 import type { ReactNode } from "react";
 
 /**
  * Interactive picker for a per-account list of pages (the hooks' `keys,
- * available, limit, set`): a live preview of the tiles. Hold and drag a
- * pinned tile to reorder; the corner button removes it. Tap an available
- * tile to add it. `fixedFirst` shows a locked Beranda tile
- * before the list (not part of `keys` or `limit`); `children` render below.
+ * available, limit, set`): one grid with the pinned pages in a highlighted
+ * zone on top and the rest below. Drag between them, or tap a page below to
+ * add it and the corner button to remove one. `fixedFirst` locks a Beranda
+ * tile in the first cell (not part of `keys` or `limit`). `preview` renders
+ * above the grid, `children` below it.
  */
 export const ActionPicker = ({
   title,
@@ -23,6 +24,7 @@ export const ActionPicker = ({
   set,
   fixedFirst = false,
   onDraggingChange,
+  preview,
   children,
 }: {
   title: string;
@@ -34,16 +36,14 @@ export const ActionPicker = ({
   fixedFirst?: boolean;
   /** True while a tile is dragged; the page should stop scrolling meanwhile. */
   onDraggingChange?: (dragging: boolean) => void;
+  preview?: ReactNode;
   children?: ReactNode;
 }) => {
   const colors = useAppColors();
-  const others = available.filter((k) => !keys.includes(k));
   const full = keys.length >= limit;
-  // The locked Beranda tile counts too, e.g. 4/4 for a full navbar.
+  // The locked Beranda tile counts too, e.g. 5/5 for a full navbar.
+  const zoneSize = limit + (fixedFirst ? 1 : 0);
   const shownCount = keys.length + (fixedFirst ? 1 : 0);
-  const shownLimit = limit + (fixedFirst ? 1 : 0);
-
-  const hint = "Tahan lalu geser untuk memindah, ketuk x untuk menghapus.";
 
   return (
     <SettingsCard
@@ -54,62 +54,46 @@ export const ActionPicker = ({
           style={{ typography: "labelLarge", fontWeight: "bold" }}
           color={colors.primary}
         >
-          {`${shownCount}/${shownLimit}`}
+          {`${shownCount}/${zoneSize}`}
         </Text>
       }
     >
-      {keys.length > 0 || fixedFirst ? (
-        <DraggableTiles
-          keys={fixedFirst ? ["home" as const, ...keys] : keys}
-          lockedFirst={fixedFirst ? "home" : undefined}
-          onDraggingChange={onDraggingChange}
-          onReorder={(order) =>
-            set(order.filter((k): k is QuickActionKey => k !== "home"))
-          }
-          tile={(key) =>
-            key === "home" ? (
-              <QuickActionTile icon={Home} label="Beranda" onClick={() => {}} />
-            ) : (
-              <QuickActionTile
-                actionKey={key}
-                onClick={() => {}}
-                onRemove={() => set(keys.filter((k) => k !== key))}
-              />
-            )
-          }
-        />
-      ) : (
-        <Text
-          style={{ typography: "bodyMedium" }}
-          color={colors.onSurfaceVariant}
-        >
-          Belum ada menu. Tambahkan dari daftar di bawah.
-        </Text>
-      )}
+      {preview}
+      <DraggableTiles<QuickActionKey | "home">
+        pinned={keys}
+        available={available}
+        zoneSize={zoneSize}
+        // A navbar of 5 gets 5 columns so the zone stays one row.
+        columns={zoneSize === 5 ? 5 : 4}
+        locked={fixedFirst ? "home" : undefined}
+        onDraggingChange={onDraggingChange}
+        onChange={(next) =>
+          set(next.filter((k): k is QuickActionKey => k !== "home"))
+        }
+        tile={(key, inZone) =>
+          key === "home" ? (
+            <QuickActionTile icon={Home} label="Beranda" reserveRemove onClick={() => {}} />
+          ) : inZone ? (
+            <QuickActionTile
+              actionKey={key}
+              onClick={() => {}}
+              onRemove={() => set(keys.filter((k) => k !== key))}
+            />
+          ) : (
+            <QuickActionTile
+              actionKey={key}
+              reserveRemove
+              dimmed={full}
+              onClick={() => !full && set([...keys, key])}
+            />
+          )
+        }
+      />
       <Text style={{ typography: "bodySmall" }} color={colors.onSurfaceVariant}>
-        {hint}
+        {full
+          ? "Penuh. Geser ke atas untuk mengganti, x untuk menghapus."
+          : "Tahan lalu geser ke kotak atas, atau ketuk untuk menambah."}
       </Text>
-
-      {others.length > 0 ? (
-        <Column verticalArrangement={{ spacedBy: 12 }}>
-          <CardLabel>
-            {full
-              ? `Tersedia (maks ${shownLimit}, hapus satu dulu)`
-              : "Tersedia, ketuk untuk menambah"}
-          </CardLabel>
-          <QuickActionRows
-            keys={others}
-            tile={(key) => (
-              <QuickActionTile
-                key={key}
-                actionKey={key}
-                dimmed={full}
-                onClick={() => !full && set([...keys, key])}
-              />
-            )}
-          />
-        </Column>
-      ) : null}
       {children}
     </SettingsCard>
   );

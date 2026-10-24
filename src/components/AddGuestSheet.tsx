@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { DateTimeField } from "@/components/DateTimeField";
@@ -109,6 +110,7 @@ export const AddGuestSheet = ({
         invited_by: user.id,
       });
       if (error) throw error;
+      haptics.success();
       onSaved(data);
       await sendPush({
         recipients: "all_except_me",
@@ -117,6 +119,7 @@ export const AddGuestSheet = ({
         body: `${user.fullname} mendaftarkan tamu baru: ${trimmed}.`,
       });
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);

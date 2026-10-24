@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { AddGuestSheet } from "@/components/AddGuestSheet";
@@ -75,6 +76,7 @@ export default function GuestsScreen() {
   }
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadGuests().finally(() => setRefreshing(false));
   };
@@ -83,6 +85,7 @@ export default function GuestsScreen() {
     try {
       const { error } = await guestsApi.update(g.id, { check_out: new Date().toISOString() });
       if (error) throw error;
+      haptics.success();
       loadGuests();
       const res = await snackbar.current?.showSnackbar({
         message: `${g.name} sudah keluar`,
@@ -93,6 +96,7 @@ export default function GuestsScreen() {
         loadGuests();
       }
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   }
@@ -162,7 +166,10 @@ export default function GuestsScreen() {
 
             <SingleChoiceSegmentedButtonRow modifiers={[fillMaxWidth()]}>
               {(["inside", "riwayat"] as const).map((key) => (
-                <SegmentedButton key={key} selected={segment === key} onClick={() => setSegment(key)}>
+                <SegmentedButton key={key} selected={segment === key} onClick={() => {
+                  if (segment !== key) haptics.tick();
+                  setSegment(key);
+                }}>
                   <SegmentedButton.Label>
                     <Text>
                       {key === "inside" ? `Di dalam · ${inside.length}` : `Riwayat · ${rawGuests.length}`}

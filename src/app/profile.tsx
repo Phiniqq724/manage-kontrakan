@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { AppHost, useAppColors } from "@/components/AppHost";
 import { BackButton } from "@/components/BackButton";
 import { useHideOnScroll } from "@/utils/tab-action";
@@ -5,7 +6,6 @@ import { Avatar, avatarColorFor } from "@/components/Avatar";
 import { FormField } from "@/components/FormField";
 import { FormSheet, SheetActions } from "@/components/FormSheet";
 import { ButtonContent } from "@/components/ButtonContent";
-import { InfoDialog } from "@/components/InfoDialog";
 import { AddAccountSheet } from "@/components/LinkedAccountSheet";
 import { ReportIssueSheet } from "@/components/ReportIssueSheet";
 import { useAccountActions } from "@/utils/account-actions";
@@ -24,21 +24,17 @@ import {
   type PaymentRow,
 } from "@/components/PaymentsSheets";
 import {
-  appReleasesApi,
   kamarApi,
   linkedAccountsApi,
   paymentsApi,
   usersApi,
 } from "@/services/api";
-import { downloadAndInstallApk, isNewerVersion } from "@/utils/app-update";
-import { applyUpdate, fetchLatestUpdate, otaEnabled } from "@/utils/ota";
 import { useAuth } from "@/utils/auth-context";
 import { unlinkAccount } from "@/utils/multi-session";
 import { seedTextField } from "@/utils/seed-text-field";
 import { supabase } from "@/utils/supabase";
 import type { Database } from "@/utils/supabase-types";
 import { captureAndUploadImage, pickAndUploadImage } from "@/utils/upload";
-import CheckCircle from "@expo/material-symbols/check_circle.xml";
 import ChevronRight from "@expo/material-symbols/chevron_right.xml";
 import Close from "@expo/material-symbols/close.xml";
 import Edit from "@expo/material-symbols/edit.xml";
@@ -49,7 +45,6 @@ import PersonAdd from "@expo/material-symbols/person_add.xml";
 import PhotoCamera from "@expo/material-symbols/photo_camera.xml";
 import PhotoLibrary from "@expo/material-symbols/photo_library.xml";
 import SwapHoriz from "@expo/material-symbols/swap_horiz.xml";
-import SystemUpdate from "@expo/material-symbols/system_update_alt.xml";
 import type { TextFieldRef } from "@expo/ui/jetpack-compose";
 import {
   Box,
@@ -79,15 +74,10 @@ import {
   size,
   weight,
 } from "@expo/ui/jetpack-compose/modifiers";
-import Constants from "expo-constants";
-import * as WebBrowser from "expo-web-browser";
 import { useEffect, useRef, useState } from "react";
 
 type UserRow = Database["public"]["Tables"]["users"]["Row"];
 type KamarRow = Database["public"]["Tables"]["kamar"]["Row"];
-type AppReleaseRow = Database["public"]["Tables"]["app_releases"]["Row"];
-
-const CURRENT_VERSION = Constants.expoConfig?.version ?? "—";
 
 function kamarLabel(k: KamarRow | null) {
   if (!k) return null;
@@ -119,9 +109,6 @@ export default function ProfileScreen() {
     partnerName: string;
   } | null>(null);
   const [switching, setSwitching] = useState(false);
-  const [latestRelease, setLatestRelease] = useState<AppReleaseRow | null>(
-    null,
-  );
 
   useEffect(() => {
     if (user?.id) loadData();
@@ -129,11 +116,10 @@ export default function ProfileScreen() {
 
   async function loadData() {
     if (!user) return;
-    const [payRes, kamarRes, linkRes, releaseRes] = await Promise.all([
+    const [payRes, kamarRes, linkRes] = await Promise.all([
       paymentsApi.getByUser(user.id),
       kamarApi.getByUser(user.id),
       linkedAccountsApi.getForUser(user.id),
-      appReleasesApi.getLatest(),
     ]);
     if (payRes.data) {
       setPayments(payRes.data.sort((a, b) => b.period.localeCompare(a.period)));
@@ -153,7 +139,6 @@ export default function ProfileScreen() {
     } else {
       setLinkedAccount(null);
     }
-    setLatestRelease(releaseRes.data ?? null);
   }
 
   const closeAllPaymentSheets = () => {
@@ -163,6 +148,7 @@ export default function ProfileScreen() {
   };
 
   const onRefresh = () => {
+    haptics.refresh();
     setRefreshing(true);
     loadData().finally(() => setRefreshing(false));
   };
@@ -174,6 +160,7 @@ export default function ProfileScreen() {
     try {
       await switchAccount();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSwitching(false);
@@ -186,6 +173,7 @@ export default function ProfileScreen() {
       await unlinkAccount(linkedAccount.id);
       setLinkedAccount(null);
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   };
@@ -465,8 +453,6 @@ export default function ProfileScreen() {
             )
           )}
 
-          <AppVersionCard latest={latestRelease} />
-
           <OutlinedButton onClick={handleLogout} modifiers={[fillMaxWidth()]}>
             <Row
               verticalAlignment="center"
@@ -667,142 +653,6 @@ function InfoRow({
   );
 }
 
-function AppVersionCard({ latest }: { latest: AppReleaseRow | null }) {
-  const colors = useAppColors();
-  const [opening, setOpening] = useState(false);
-  const [checking, setChecking] = useState(false);
-  // Result of a manual OTA check that didn't restart the app.
-  const [otaResult, setOtaResult] = useState<
-    { title: string; text?: string; ok: boolean } | null
-  >(null);
-  const updateAvailable =
-    !!latest && isNewerVersion(CURRENT_VERSION, latest.version);
-
-  const handleDownload = async () => {
-    if (!latest?.apk_url) return;
-    setOpening(true);
-    try {
-      // Try the in-app download + native installer first; falls back to a
-      // browser download on older builds without the native modules.
-      const installed = await downloadAndInstallApk(
-        latest.apk_url,
-        latest.version,
-      );
-      if (!installed) {
-        await WebBrowser.openBrowserAsync(latest.apk_url);
-      }
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
-      setOpening(false);
-    }
-  };
-
-  // Manual OTA check: restarts straight into a new update, if any.
-  const handleCheckOta = async () => {
-    setChecking(true);
-    try {
-      if ((await fetchLatestUpdate()) === "downloaded") await applyUpdate();
-      else setOtaResult({ title: "Sudah versi terbaru", ok: true });
-    } catch (err: any) {
-      setOtaResult({ title: "Gagal cek pembaruan", text: err.message, ok: false });
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  return (
-    <OutlinedCard modifiers={[fillMaxWidth()]}>
-      <Column
-        verticalArrangement={{ spacedBy: 12 }}
-        modifiers={[fillMaxWidth(), paddingAll(16)]}
-      >
-        <Row
-          verticalAlignment="center"
-          horizontalArrangement={{ spacedBy: 12 }}
-          modifiers={[fillMaxWidth()]}
-        >
-          <Icon
-            source={updateAvailable ? SystemUpdate : CheckCircle}
-            tint={updateAvailable ? colors.primary : colors.onSurfaceVariant}
-            size={22}
-          />
-          <Column verticalArrangement={{ spacedBy: 2 }} modifiers={[weight(1)]}>
-            <Text
-              style={{ typography: "bodyLarge", fontWeight: "bold" }}
-              color={colors.onSurface}
-            >
-              Versi aplikasi
-            </Text>
-            <Text
-              style={{ typography: "bodySmall" }}
-              color={colors.onSurfaceVariant}
-            >
-              {updateAvailable
-                ? `Versi ${latest!.version} tersedia · kamu di ${CURRENT_VERSION}`
-                : `Kamu sudah di versi terbaru (${CURRENT_VERSION})`}
-            </Text>
-          </Column>
-        </Row>
-
-        {updateAvailable && !!latest?.release_notes && (
-          <Text
-            style={{ typography: "bodySmall" }}
-            color={colors.onSurfaceVariant}
-          >
-            {latest.release_notes}
-          </Text>
-        )}
-
-        {updateAvailable && (
-          <Button
-            enabled={!opening}
-            onClick={handleDownload}
-            modifiers={[fillMaxWidth()]}
-          >
-            <Row
-              verticalAlignment="center"
-              horizontalArrangement={{ spacedBy: 8 }}
-            >
-              <Icon source={SystemUpdate} tint={colors.onPrimary} size={18} />
-              <Text
-                style={{ typography: "labelLarge", fontWeight: "bold" }}
-                color={colors.onPrimary}
-              >
-                Perbarui sekarang
-              </Text>
-            </Row>
-          </Button>
-        )}
-
-        {!updateAvailable && otaEnabled() && (
-          <OutlinedButton
-            enabled={!checking}
-            onClick={handleCheckOta}
-            modifiers={[fillMaxWidth()]}
-          >
-            <ButtonContent
-              loading={checking}
-              enabled={!checking}
-              label="Cek pembaruan"
-              color={colors.primary}
-            />
-          </OutlinedButton>
-        )}
-
-        {otaResult && (
-          <InfoDialog
-            title={otaResult.title}
-            text={otaResult.text}
-            icon={otaResult.ok ? CheckCircle : undefined}
-            onClose={() => setOtaResult(null)}
-          />
-        )}
-      </Column>
-    </OutlinedCard>
-  );
-}
-
 function EditProfileSheet({
   user,
   onClose,
@@ -852,6 +702,7 @@ function EditProfileSheet({
       setAvatarUrl(url);
       onAvatarUpdated();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setUploadingAvatar(false);
@@ -865,6 +716,7 @@ function EditProfileSheet({
       setAvatarUrl(null);
       onAvatarUpdated();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     }
   };
@@ -884,6 +736,7 @@ function EditProfileSheet({
       if (error) throw error;
       onSaved();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);
@@ -1024,6 +877,7 @@ function ChangePasswordSheet({
       if (authError) throw authError;
       onClose();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setChangingPw(false);
@@ -1088,6 +942,7 @@ function EditKamarSheet({
       onSaved(desc);
       onClose();
     } catch (err: any) {
+      haptics.error();
       alert(err.message);
     } finally {
       setSaving(false);

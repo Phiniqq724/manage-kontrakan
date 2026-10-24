@@ -1,3 +1,4 @@
+import { haptics } from "@/utils/haptics";
 import { useAppColors } from "@/components/AppHost";
 import {
   Column,
@@ -67,7 +68,10 @@ export const ChipRow = <T extends string>({
 }) => (
   <Row horizontalArrangement={{ spacedBy: 8 }} modifiers={[horizontalScroll()]}>
     {options.map(([v, label]) => (
-      <FilterChip key={v} selected={v === value} onClick={() => onChange(v)}>
+      <FilterChip key={v} selected={v === value} onClick={() => {
+          if (v !== value) haptics.tick();
+          onChange(v);
+        }}>
         <FilterChip.Label>
           <Text>{label}</Text>
         </FilterChip.Label>

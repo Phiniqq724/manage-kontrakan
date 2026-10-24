@@ -1,6 +1,6 @@
 /// <reference types="jest" />
 
-import { hueToHex, readableOn } from "@/utils/color";
+import { hexToHsv, hsvToHex, hueToHex, readableOn } from "@/utils/color";
 
 describe("hueToHex", () => {
   it("maps primary hues", () => {
@@ -32,5 +32,24 @@ describe("readableOn", () => {
 
   it("falls back to white for non-hex input", () => {
     expect(readableOn("red")).toBe("#ffffff");
+  });
+});
+
+describe("hsvToHex / hexToHsv", () => {
+  it("converts primaries and greys", () => {
+    expect(hsvToHex({ h: 0, s: 1, v: 1 })).toBe("#ff0000");
+    expect(hsvToHex({ h: 120, s: 1, v: 1 })).toBe("#00ff00");
+    expect(hsvToHex({ h: 240, s: 1, v: 0.5 })).toBe("#000080");
+    expect(hsvToHex({ h: 200, s: 0, v: 0.5 })).toBe("#808080");
+  });
+
+  it("round-trips a colour", () => {
+    const hsv = hexToHsv("#4285F4")!;
+    expect(hsvToHex(hsv)).toBe("#4285f4");
+  });
+
+  it("rejects non-hex input", () => {
+    expect(hexToHsv("blue")).toBeNull();
+    expect(hexToHsv("#12345")).toBeNull();
   });
 });

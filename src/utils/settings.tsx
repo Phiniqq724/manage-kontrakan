@@ -1,5 +1,6 @@
 import "expo-sqlite/localStorage/install";
 import { useAuth } from "./auth-context";
+import { setHapticsEnabled } from "./haptics";
 import {
   createContext,
   useCallback,
@@ -20,6 +21,7 @@ export const QUICK_ACTIONS = {
   piket: { label: "Piket", href: "/piket" },
   rules: { label: "Aturan", href: "/rules" },
   guests: { label: "Tamu", href: "/guests" },
+  shopping: { label: "Belanja", href: "/shopping" },
   profile: { label: "Profil", href: "/profile" },
   adminPayments: { label: "Pembayaran", href: "/admin/payments", adminOnly: true },
   adminRules: { label: "Usulan aturan", href: "/admin/rules", adminOnly: true },
@@ -54,21 +56,44 @@ export function resolveQuickActions(
     .slice(0, quickActionLimit(isAdmin));
 }
 
-/** Navbar: 4 items in total, Beranda fixed first plus up to 3 chosen per account. */
-export const NAV_ITEM_LIMIT = 3;
+/** Most navbar items after Beranda that are ever kept (5 in the bar in total). */
+export const NAV_ITEM_MAX = 4;
 const DEFAULT_NAV_ITEMS: QuickActionKey[] = ["piket", "guests", "rules"];
 
 /**
+ * How many items fit after Beranda: 3 for the floating bar with the active
+ * label (the label takes room), 4 without labels or in the classic bar.
+ */
+export const navItemLimit = (s: Pick<Settings, "navStyle" | "navLabels">) =>
+  s.navStyle === "floating" && s.navLabels === "active" ? 3 : NAV_ITEM_MAX;
+
+/**
  * The navbar items after Beranda for a role: the saved choice (or the
- * default Piket, Tamu, Aturan), without admin tools for non-admins, max 3.
+ * default Piket, Tamu, Aturan), without admin tools for non-admins, capped
+ * at `limit`.
  */
 export function resolveNavItems(
   saved: QuickActionKey[] | null,
   isAdmin: boolean,
+  limit: number = NAV_ITEM_MAX,
 ): QuickActionKey[] {
   return (saved ?? DEFAULT_NAV_ITEMS)
     .filter((k) => isAdmin || !isAdminOnly(k))
-    .slice(0, NAV_ITEM_LIMIT);
+    .slice(0, limit);
+}
+
+/**
+ * The list to save after an edit made while only `limit` items show: the
+ * edited visible items plus the ones hidden past the limit, so they come
+ * back when a bigger navbar style allows them again.
+ */
+export function keepHiddenNavItems(
+  next: QuickActionKey[],
+  previous: QuickActionKey[],
+  limit: number,
+): QuickActionKey[] {
+  const hidden = previous.slice(limit).filter((k) => !next.includes(k));
+  return [...next, ...hidden].slice(0, NAV_ITEM_MAX);
 }
 
 /** Floating navbar labels; the classic bar always labels every item. */
@@ -77,7 +102,7 @@ export type NavStyle = "floating" | "classic";
 
 /**
  * Preset theme colours: Google's four brand colours plus Material Purple
- * (the Material 3 baseline), Teal, Orange and Pink. Each one seeds a full
+ * (the Material 3 baseline), Teal, Orange, Pink and a grey for monochrome. Each one seeds a full
  * Material You palette, like picking a colour in Android's Wallpaper & style.
  */
 export const COLOR_PRESETS = [
@@ -89,6 +114,8 @@ export const COLOR_PRESETS = [
   { name: "Teal", hex: "#00897B" },
   { name: "Oranye", hex: "#F57C00" },
   { name: "Pink", hex: "#D81B60" },
+  // Grey seed: the patched palette builder turns it into a black-and-white theme.
+  { name: "Monokrom", hex: "#808080" },
 ] as const;
 
 /** App text size steps, as a multiplier of the phone's own font size. */
@@ -114,6 +141,8 @@ export type Settings = {
   hideNavOnScroll: boolean;
   /** Show the navbar on non-tab pages too (Acara, Profil, ...). */
   navOnAllPages: boolean;
+  /** Vibration feedback on toggles, selections and results. */
+  haptics: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -126,6 +155,7 @@ export const DEFAULT_SETTINGS: Settings = {
   navStyle: "floating",
   hideNavOnScroll: true,
   navOnAllPages: true,
+  haptics: true,
 };
 
 const STORAGE_KEY = "semanggi.settings";
@@ -170,7 +200,7 @@ export function loadSettings(raw: string | null): Settings {
       ? (saved.textScale as number)
       : d.textScale,
     quickActionsByUser: byUser(saved.quickActionsByUser, quickActionLimit(true)),
-    navItemsByUser: byUser(saved.navItemsByUser, NAV_ITEM_LIMIT),
+    navItemsByUser: byUser(saved.navItemsByUser, NAV_ITEM_MAX),
     navLabels: ["active", "none"].includes(saved.navLabels as string)
       ? (saved.navLabels as NavLabels)
       : d.navLabels,
@@ -181,6 +211,7 @@ export function loadSettings(raw: string | null): Settings {
       typeof saved.hideNavOnScroll === "boolean" ? saved.hideNavOnScroll : d.hideNavOnScroll,
     navOnAllPages:
       typeof saved.navOnAllPages === "boolean" ? saved.navOnAllPages : d.navOnAllPages,
+    haptics: typeof saved.haptics === "boolean" ? saved.haptics : d.haptics,
   };
 }
 
@@ -215,6 +246,7 @@ const write = (settings: Settings) => {
 /** Per-device app settings, saved on this phone. */
 export const SettingsProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useState(read);
+  setHapticsEnabled(settings.haptics);
 
   const update = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -264,6 +296,25 @@ const usePerAccountList = (
 export const useQuickActions = () =>
   usePerAccountList("quickActionsByUser", resolveQuickActions, quickActionLimit);
 
-/** This account's navbar items after Beranda. */
-export const useNavItems = () =>
-  usePerAccountList("navItemsByUser", resolveNavItems, () => NAV_ITEM_LIMIT);
+/**
+ * This account's navbar items after Beranda, cut to what the current style
+ * fits. Items past the limit stay saved (see `keepHiddenNavItems`).
+ */
+export const useNavItems = () => {
+  const { settings, update } = useSettings();
+  const list = usePerAccountList("navItemsByUser", resolveNavItems, () => NAV_ITEM_MAX);
+  const { user } = useAuth();
+  const limit = navItemLimit(settings);
+  return {
+    ...list,
+    keys: list.keys.slice(0, limit),
+    limit,
+    set: (keys: QuickActionKey[]) =>
+      update({
+        navItemsByUser: {
+          ...settings.navItemsByUser,
+          [user?.id ?? ""]: keepHiddenNavItems(keys, list.keys, limit),
+        },
+      }),
+  };
+};

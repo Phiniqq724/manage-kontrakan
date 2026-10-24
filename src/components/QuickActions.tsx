@@ -1,3 +1,4 @@
+import ShoppingCart from "@expo/material-symbols/shopping_cart.xml";
 import FactCheck from "@expo/material-symbols/fact_check.xml";
 import { useAppColors } from "@/components/AppHost";
 import { QUICK_ACTIONS, type QuickActionKey } from "@/utils/settings";
@@ -38,6 +39,7 @@ export const QUICK_ACTION_ICONS: Record<QuickActionKey, ImageSourcePropType> = {
   piket: CalendarMonth,
   rules: Gavel,
   guests: HowToReg,
+  shopping: ShoppingCart,
   profile: Person,
   adminPayments: AccountBalanceWallet,
   adminRules: Description,
@@ -59,6 +61,7 @@ export const QuickActionTile = ({
   selected = false,
   dimmed = false,
   onRemove,
+  reserveRemove = false,
 }: {
   actionKey?: QuickActionKey;
   icon?: ImageSourcePropType;
@@ -67,6 +70,8 @@ export const QuickActionTile = ({
   selected?: boolean;
   dimmed?: boolean;
   onRemove?: () => void;
+  /** Keep the remove button's room even without one, so every tile in a grid is the same height. */
+  reserveRemove?: boolean;
 }) => {
   const colors = useAppColors();
   return (
@@ -76,7 +81,7 @@ export const QuickActionTile = ({
       modifiers={dimmed ? [alpha(0.4)] : []}
     >
       {/* Extra room around the tile only when the remove button sits on its corner. */}
-      <Box modifiers={[onRemove ? size(64, 64) : size(56, 56)]}>
+      <Box modifiers={[onRemove || reserveRemove ? size(64, 64) : size(56, 56)]}>
         <Box
           contentAlignment="center"
           modifiers={[

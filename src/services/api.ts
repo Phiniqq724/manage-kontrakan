@@ -83,6 +83,9 @@ export const piketsApi = {
       p_docs: docs,
       p_description: description,
     }),
+  /** Reminds a partner on today's schedule; resolves to 0 when sent, else seconds left on the cooldown. */
+  pokePartner: async (partnerId: string) =>
+    await supabase.rpc("poke_piket_partner", { p_partner: partnerId }),
 };
 
 // PIKET REQUESTS API
@@ -270,6 +273,36 @@ export const requestVotesApi = {
       .delete()
       .eq("request_id", requestId)
       .eq("user_id", userId),
+};
+
+// SHOPPING LIST API
+export const shoppingApi = {
+  getAll: async () =>
+    await supabase
+      .from("shopping_items")
+      .select("*")
+      .order("created_at", { ascending: false }),
+  create: async (name: string, note: string | null) =>
+    await supabase
+      .from("shopping_items")
+      .insert({ name, note })
+      .select()
+      .single(),
+  delete: async (id: string) =>
+    await supabase.from("shopping_items").delete().eq("id", id),
+  /** Returns "done" when the author bought it themselves, else "submitted". */
+  submit: async (id: string, itemPhoto: string, receiptPhoto: string) =>
+    await supabase.rpc("submit_shopping_item", {
+      p_id: id,
+      p_item_photo: itemPhoto,
+      p_receipt_photo: receiptPhoto,
+    }),
+  review: async (id: string, accept: boolean, note?: string) =>
+    await supabase.rpc("review_shopping_item", {
+      p_id: id,
+      p_accept: accept,
+      p_note: note,
+    }),
 };
 
 // APP RELEASES API
